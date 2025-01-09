@@ -133,4 +133,4 @@ MIT
 
 ## Support
 
-For support or feature requests, please open an issue with the label "feedback-collector" in the repository.
+For support or feature requests, please open an issue for the developer with the label "feedback-collector" in the repository.
