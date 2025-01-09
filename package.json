@@ -1,0 +1,21 @@
+{
+  "name": "feedback-collector",
+  "version": "1.0.0",
+  "description": "A Slack app that collects feedback and creates Jira tickets or summaries",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@slack/bolt": "^3.17.0",
+    "@slack/web-api": "^6.11.2",
+    "dotenv": "^16.3.1",
+    "jira-client": "^8.2.2",
+    "openai": "^4.20.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
