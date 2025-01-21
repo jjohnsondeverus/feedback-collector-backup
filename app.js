@@ -643,941 +643,38 @@ app.action('mode_summary', async ({ ack, body, client }) => {
     }
   ];
 
-  await client.views.update({
-    view_id: body.view.id,
-    view: {
-      type: "modal",
-      callback_id: "summary_channel_select",
-      title: {
-        type: "plain_text",
-        text: "Generate Summary",
-        emoji: true
-      },
-      blocks: blocks,
-      submit: {
-        type: "plain_text",
-        text: "Generate",
-        emoji: true
-      }
+  // Create the modal view object
+  const modalView = {
+    type: "modal",
+    callback_id: "summary_channel_select",
+    title: {
+      type: "plain_text",
+      text: "Generate Summary",
+      emoji: true
+    },
+    blocks: blocks,
+    submit: {
+      type: "plain_text",
+      text: "Generate",
+      emoji: true
     }
-  });
-});
+  };
 
-// Add this helper function to determine channel type
-function getChannelType(channelName) {
-  const channelLower = channelName.toLowerCase();
-  if (channelLower.includes('expense')) {
-    return 'expenses';
-  } else if (channelLower.includes('ticket') || channelLower.includes('support')) {
-    return 'tickets';
-  } else {
-    return 'general';
-  }
-}
-
-// Modify the summary generation handler
-app.view('summary_channel_select', async ({ ack, body, view, client }) => {
-  await ack();
-  
+  // Try to update the view, fall back to opening a new one if needed
   try {
-    // Get selected channels and date range
-    const selectedChannels = view.state.values.channel_select.channels_selected.selected_channels;
-    const startDate = view.state.values.date_start.date_start_input.selected_date;
-    const endDate = view.state.values.date_end.date_end_input.selected_date;
-
-    // Collect messages from all selected channels
-    const allMessages = [];
-    for (const channelId of selectedChannels) {
-      console.log(`Processing channel: ${channelId}`);
-      const messages = await getMessagesInDateRange(client, channelId, startDate, endDate);
-      allMessages.push(...messages);
-    }
-
-    console.log(`Found ${allMessages.length} messages in date range`);
-
-    // Convert messages to conversation text
-    const conversation = allMessages
-      .map(msg => {
-        const userName = msg.user_info?.name || 'Unknown User';
-        return `[${userName}]: ${msg.text || ''}`;
-      })
-      .filter(text => text.length > 0)
-      .join('\n\n');
-
-    // Get channel info to determine type
-    const channelInfo = await Promise.all(
-      selectedChannels.map(async channelId => {
-        const info = await client.conversations.info({ channel: channelId });
-        return {
-          id: channelId,
-          name: info.channel.name,
-          type: getChannelType(info.channel.name)
-        };
-      })
-    );
-
-    // Select appropriate prompt based on channel type
-    const getPromptForChannel = (channelType) => {
-      switch (channelType) {
-        case 'expenses':
-          return `Analyze this Slack conversation about software expenses and tools. 
-          Create a brief, actionable summary focusing on:
-          - Key tools discussed
-          - Costs and ROI
-          - Main decisions/recommendations made by specific team members
-          - Next steps and who is responsible
-          
-          Format as:
-          *Summary*
-          Brief overview of main points (2-3 sentences), mentioning key contributors
-
-          *Tools & Costs*
-          • Tool Name: Cost (if mentioned) - Key points (include who proposed/discussed)
-          
-          *Decisions*
-          • Key decision points or recommendations (include who made/supported the decision)
-          
-          *Next Steps*
-          • Action items (include who is responsible if mentioned)`;
-          
-        case 'tickets':
-          return `Analyze this Slack conversation about technical issues.
-          Create a brief, actionable summary focusing on:
-          - Key issues discussed and who reported them
-          - Solutions proposed and by whom
-          - Decisions made and who made them
-          - Next steps and who is responsible
-          
-          Format as:
-          *Summary*
-          Brief overview of main points (2-3 sentences), mentioning key contributors
-
-          *Key Issues*
-          • Issue: Status/Solution (include who reported/solved)
-          
-          *Decisions*
-          • Key decisions made (include who made/supported the decision)
-          
-          *Next Steps*
-          • Action items (include who is responsible if mentioned)`;
-          
-        default:
-          return `Analyze this Slack conversation.
-          Create a brief, actionable summary focusing on:
-          - Key points discussed and who raised them
-          - Decisions made and who made them
-          - Next steps and who is responsible
-          
-          Format as:
-          *Summary*
-          Brief overview of main points (2-3 sentences), mentioning key contributors
-
-          *Key Points*
-          • Main discussion points (include who raised/discussed them)
-          
-          *Next Steps*
-          • Action items (include who is responsible if mentioned)`;
-      }
-    };
-
-    const channelType = channelInfo[0].type; // Use first channel's type if multiple
-    const summaryPrompt = getPromptForChannel(channelType);
-
-    const response = await openai.chat.completions.create({
-      model: "gpt-4-1106-preview",
-      messages: [
-        {
-          role: "system",
-          content: `You are an expert at analyzing ${channelType} discussions and creating clear, actionable summaries.`
-        },
-        {
-          role: "user",
-          content: `${summaryPrompt}\n\nConversation:\n${conversation}`
-        }
-      ],
-      temperature: 0.7
-    });
-
-    // Format the summary for Slack
-    const summary = response.choices[0].message.content
-      .replace(/^#+\s+/gm, '*') // Replace markdown headers with bold
-      .replace(/^[-•]\s+/gm, '• ') // Standardize bullets
-      .replace(/\n{3,}/g, '\n\n') // Remove extra newlines
-      .replace(/\*\*(.*?)\*\*/g, '*$1*') // Convert double asterisks to single
-      .trim();
-
-    const channelsList = channelInfo.map(c => `#${c.name}`).join(', ');
-    const dateRange = `${startDate} to ${endDate}`;
-    const fallbackText = `Discussion Summary for ${channelsList} (${dateRange})\n\n${summary}`;
-
-    await client.chat.postMessage({
-      channel: body.user.id,
-      text: fallbackText, // Add fallback text for accessibility
-      blocks: [
-        {
-          type: "header",
-          text: {
-            type: "plain_text",
-            text: "📊 Discussion Summary",
-            emoji: true
-          }
-        },
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: summary
-          }
-        },
-        {
-          type: "context",
-          elements: [
-            {
-              type: "mrkdwn",
-              text: `*Channels summarized:* ${channelsList}\n*Date range:* ${dateRange}`
-            }
-          ]
-        }
-      ]
-    });
-
-  } catch (error) {
-    console.error('Error generating summary:', error);
-    await client.chat.postMessage({
-      channel: body.user.id,
-      text: `Error generating summary: ${error.message}` // Error messages already had text
-    });
-  }
-});
-
-// Handle modal submission
-app.view('feedback_channels', async ({ ack, body, view, client }) => {
-  await ack();
-  
-  const selectedChannels = view.state.values.channels_block.channels_input.selected_channels;
-  const startDate = view.state.values.date_start.date_start_input.selected_date;
-  const endDate = view.state.values.date_end.date_end_input.selected_date;
-
-  // Validate date range
-  if (new Date(startDate) > new Date(endDate)) {
-    await client.chat.postMessage({
-      channel: body.user.id,
-      text: "Error: Start date must be before or equal to end date."
-    });
-    return;
-  }
-  
-  try {
-    const channels = selectedChannels;
-    const allFeedback = [];
-    
-    // Process each channel
-    for (const channelId of channels) {
-      try {
-        // Get channel info for the report
-        const channelInfo = await client.conversations.info({ channel: channelId });
-        console.log(`Processing channel: ${channelInfo.channel.name}`);
-        
-        // Fetch messages for date range
-        const messages = await getMessagesInDateRange(client, channelId, startDate, endDate);
-        console.log(`Found ${messages.length} messages in date range`);
-        
-        // Analyze feedback
-        const analyzedFeedback = await analyzeFeedback(messages);
-        console.log(`Analysis complete. Found ${analyzedFeedback.length} feedback items`);
-        
-        if (analyzedFeedback.length > 0) {
-          allFeedback.push({
-            channel: channelInfo.channel.name,
-            feedback: analyzedFeedback
-          });
-        }
-      } catch (error) {
-        // Handle specific channel errors
-        if (error.data?.error === 'not_in_channel' || error.data?.error === 'is_private') {
-          await client.chat.postMessage({
-            channel: body.user.id,
-            text: `⚠️ Unable to access ${channelInfo?.channel?.name || channelId}: ${error.data.error === 'is_private' ? 
-              'This is a private channel. Please add the bot to this channel first.' : 
-              'Bot needs to be added to this channel.'}`
-          });
-          continue;
-        }
-        throw error;
-      }
-    }
-    
-    if (allFeedback.length === 0) {
-      await client.chat.postMessage({
-        channel: body.user.id,
-        text: "No product-related feedback found in the selected date range."
-      });
-      return;
-    }
-
-    // Create a formatted summary for approval
-    const summaryBlocks = [];
-    summaryBlocks.push({
-      type: "header",
-      text: {
-        type: "plain_text",
-        text: "📋 Feedback Summary for Review",
-        emoji: true
-      }
-    });
-
-    for (const channelFeedback of allFeedback) {
-      summaryBlocks.push({
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `*Channel: #${channelFeedback.channel}*`
-        }
-      });
-
-      channelFeedback.feedback.forEach((item, index) => {
-        summaryBlocks.push({
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: `*${index + 1}. ${item.title}*\n${item.summary}\n*Type:* ${item.type}\n*Priority:* ${item.priority}`
-          }
-        });
-      });
-
-      summaryBlocks.push({
-        type: "divider"
-      });
-    }
-
-    // Add approval buttons
-    const feedbackId = generateId();
-    feedbackStorage.set(feedbackId, {
-      feedback: allFeedback,
-      startDate,
-      endDate
-    });
-
-    summaryBlocks.push({
-      type: "actions",
-      block_id: "approval_buttons",
-      elements: [
-        {
-          type: "button",
-          text: {
-            type: "plain_text",
-            text: "👀 Preview Tickets",
-            emoji: true
-          },
-          value: feedbackId,
-          action_id: "preview_tickets"
-        },
-        {
-          type: "button",
-          text: {
-            type: "plain_text",
-            text: "✅ Create Jira Tickets",
-            emoji: true
-          },
-          style: "primary",
-          value: feedbackId,
-          action_id: "select_project"
-        },
-        {
-          type: "button",
-          text: {
-            type: "plain_text",
-            text: "❌ Cancel",
-            emoji: true
-          },
-          style: "danger",
-          action_id: "cancel_tickets"
-        }
-      ]
-    });
-
-    // Send the summary message with approval buttons
-    await client.chat.postMessage({
-      channel: body.user.id,
-      blocks: summaryBlocks,
-      text: "Feedback Summary for Review" // Fallback text
-    });
-    
-  } catch (error) {
-    console.error('Error in feedback collection:', error);
-    await client.chat.postMessage({
-      channel: body.user.id,
-      text: `Error collecting feedback: ${error.message}`
-    });
-  }
-});
-
-// Add this function before the project_selection handler
-function formatJiraCreationReport(results) {
-  let report = '';
-  
-  for (const channelResult of results) {
-    report += `*Channel: #${channelResult.channel}*\n`;
-    
-    // Add excluded tickets first with a red X
-    if (channelResult.excludedItems && channelResult.excludedItems.length > 0) {
-      for (const excluded of channelResult.excludedItems) {
-        report += `❌ Excluded ticket: ${excluded.item.title}\n`;
-      }
-    }
-    
-    // Then add the results of created/duplicate tickets
-    for (const result of channelResult.results) {
-      switch (result.status) {
-        case 'created':
-          report += `✅ Created ticket ${result.key}: ${result.summary}\n`;
-          break;
-        case 'duplicate':
-          report += `⚠️ Skipped duplicate of ${result.existingIssue}: ${result.summary}\n`;
-          break;
-        case 'error':
-          report += `❌ Failed to create ticket: ${result.summary} (${result.error})\n`;
-          break;
-      }
-    }
-    report += '\n';
-  }
-  
-  if (!report) {
-    report = 'No tickets were created. All items may have been excluded.';
-  }
-  
-  return report;
-}
-
-// Handle project selection
-app.action('select_project', async ({ ack, body, client }) => {
-  await ack();
-  
-  try {
-    const feedbackId = body.actions[0].value;
-    await client.views.open({
-      trigger_id: body.trigger_id,
-      view: {
-        type: 'modal',
-        callback_id: 'project_selection',
-        title: {
-          type: 'plain_text',
-          text: 'Select Jira Project'
-        },
-        blocks: [
-          {
-            type: 'input',
-            block_id: 'project_key',
-            element: {
-              type: 'plain_text_input',
-              action_id: 'project_key_input',
-              placeholder: {
-                type: 'plain_text',
-                text: 'Enter Jira project key (e.g., DIVAI)'
-              }
-            },
-            label: {
-              type: 'plain_text',
-              text: 'Jira Project Key'
-            }
-          }
-        ],
-        submit: {
-          type: 'plain_text',
-          text: 'Create Tickets'
-        },
-        private_metadata: feedbackId
-      }
-    });
-  } catch (error) {
-    console.error('Error opening project selection modal:', error);
-    await client.chat.postMessage({
-      channel: body.user.id,
-      text: 'Error opening project selection modal.'
-    });
-  }
-});
-
-// Handle project selection submission
-app.view('project_selection', async ({ ack, body, view, client }) => {
-  console.log('Project selection submitted:', {
-    body,
-    view,
-    metadata: view.private_metadata
-  });
-  
-  try {
-    await ack();
-    
-    const feedbackId = view.private_metadata;
-    console.log('FeedbackId:', feedbackId);
-    
-    const feedbackData = feedbackStorage.get(feedbackId);
-    console.log('FeedbackData:', feedbackData);
-    
-    if (!feedbackData) {
-      throw new Error('Feedback data not found. Please try collecting feedback again.');
-    }
-
-    const results = [];
-    
-    // First, get all excluded items across all channels
-    const excludedItems = new Set(
-      Array.from(previewStorage.entries())
-        .filter(([_, data]) => 
-          data.feedbackId === feedbackId && 
-          data.excluded
-        )
-        .map(([_, data]) => `${data.channelIndex}_${data.itemIndex}`)
-    );
-
-    console.log('Excluded items:', excludedItems);
-
-    // Process each channel with its own project key
-    for (const channelFeedback of feedbackData.feedback) {
-      const projectKey = view.state.values[`project_key_${channelFeedback.channel}`].project_key_input.value.toUpperCase();
-      
-      // Create array of non-excluded feedback items
-      const includedFeedback = channelFeedback.feedback.filter((_, index) => {
-        const itemKey = `${channelFeedback.channel}_${index}`;
-        return !excludedItems.has(itemKey);
-      });
-
-      if (includedFeedback.length > 0) {
-        const jiraIssues = await convertToJiraFormat(includedFeedback, projectKey);
-        const channelResults = await createJiraIssues(jiraIssues);
-        results.push({
-          channel: channelFeedback.channel,
-          results: channelResults,
-          excludedItems: channelFeedback.feedback
-            .map((item, index) => ({
-              item,
-              excluded: excludedItems.has(`${channelFeedback.channel}_${index}`)
-            }))
-            .filter(item => item.excluded)
-        });
-      } else {
-        // Add channel to results even if no tickets were created, to show excluded items
-        results.push({
-          channel: channelFeedback.channel,
-          results: [],
-          excludedItems: channelFeedback.feedback
-            .map((item, index) => ({
-              item,
-              excluded: excludedItems.has(`${channelFeedback.channel}_${index}`)
-            }))
-            .filter(item => item.excluded)
-        });
-      }
-    }
-
-    // Create a formatted report before cleaning up storage
-    const report = formatJiraCreationReport(results);
-    const fallbackText = `Jira tickets created!\n\n${report}`;
-
-    // Clean up stored data after generating the report
-    feedbackStorage.delete(feedbackId);
-    Array.from(previewStorage.keys())
-      .filter(key => previewStorage.get(key)?.feedbackId === feedbackId)
-      .forEach(key => previewStorage.delete(key));
-    
-    // Send the final report
-    await client.chat.postMessage({
-      channel: body.user.id,
-      text: fallbackText,
-      blocks: [
-        {
-          type: "header",
-          text: {
-            type: "plain_text",
-            text: "🎫 Jira Tickets Created",
-            emoji: true
-          }
-        },
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: report
-          }
-        }
-      ]
-    });
-    
-  } catch (error) {
-    console.error('Error creating Jira tickets:', error);
-    await client.chat.postMessage({
-      channel: body.user.id,
-      text: `Error creating Jira tickets: ${error.message}`
-    });
-  }
-});
-
-// Handle cancellation
-app.action('cancel_tickets', async ({ ack, body, client }) => {
-  await ack();
-  
-  await client.chat.postMessage({
-    channel: body.user.id,
-    text: "Feedback collection cancelled. No Jira tickets were created."
-  });
-});
-
-// Handle preview request
-app.action('preview_tickets', async ({ ack, body, client }) => {
-  await ack();
-  
-  try {
-    const feedbackId = body.actions[0].value;
-    const feedbackData = feedbackStorage.get(feedbackId);
-    
-    if (!feedbackData) {
-      throw new Error('Feedback data not found. Please try collecting feedback again.');
-    }
-
-    const previewBlocks = [];
-    
-    // Create preview for each ticket
-    for (const channelFeedback of feedbackData.feedback) {
-      previewBlocks.push({
-        type: "header",
-        text: {
-          type: "plain_text",
-          text: `Channel: #${channelFeedback.channel}`,
-          emoji: true
-        }
-      });
-
-      channelFeedback.feedback.forEach((item, index) => {
-        const currentPreviewId = generateId();
-        const description = `*Description:*\n${item.summary}\n\n*User Impact:*\n${item.user_impact || 'Not specified'}\n\n*Current Behavior:*\n${item.current_behavior || 'Not specified'}\n\n*Expected Behavior:*\n${item.expected_behavior || 'Not specified'}\n\n*Additional Context:*\n${item.additional_context || item.summary}`;
-        
-        // Find if this item was previously excluded
-        const existingPreviewId = Array.from(previewStorage.entries()).find(([_, data]) => 
-          data.feedbackId === feedbackId && 
-          data.channelIndex === channelFeedback.channel && 
-          data.itemIndex === index
-        )?.[0];
-        
-        const wasExcluded = existingPreviewId ? previewStorage.get(existingPreviewId)?.excluded : false;
-        
-        previewStorage.set(currentPreviewId, {
-          feedbackId: feedbackId,
-          channelIndex: channelFeedback.channel,
-          itemIndex: index,
-          description: description,
-          item: item,
-          excluded: wasExcluded
-        });
-
-        previewBlocks.push(
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: `*${index + 1}. ${item.title}*\nType: ${item.type} | Priority: ${item.priority}\n\n${description}`
-            }
-          },
-          {
-            type: "actions",
-            elements: [
-              {
-                type: "button",
-                text: {
-                  type: "plain_text",
-                  text: "✏️ Edit",
-                  emoji: true
-                },
-                value: currentPreviewId,
-                action_id: "edit_description"
-              },
-              {
-                type: "button",
-                text: {
-                  type: "plain_text",
-                  text: previewStorage.get(currentPreviewId)?.excluded ? "🔄 Include" : "❌ Exclude",
-                  emoji: true
-                },
-                value: currentPreviewId,
-                action_id: "toggle_exclude",
-                style: previewStorage.get(currentPreviewId)?.excluded ? "primary" : "danger"
-              }
-            ]
-          },
-          {
-            type: "divider"
-          }
-        );
-      });
-    }
-
-    await client.views.open({
-      trigger_id: body.trigger_id,
-      view: {
-        type: "modal",
-        callback_id: "preview_modal",
-        title: {
-          type: "plain_text",
-          text: "Preview Tickets",
-          emoji: true
-        },
-        blocks: previewBlocks,
-        submit: {
-          type: "plain_text",
-          text: "Create Tickets",
-          emoji: true
-        },
-        close: {
-          type: "plain_text",
-          text: "Back",
-          emoji: true
-        },
-        private_metadata: feedbackId
-      }
-    });
-  } catch (error) {
-    console.error('Error showing preview:', error);
-    await client.chat.postMessage({
-      channel: body.user.id,
-      text: 'Error showing ticket preview.'
-    });
-  }
-});
-
-// Add this handler for the toggle_exclude button
-app.action('toggle_exclude', async ({ ack, body, client }) => {
-  await ack();
-  
-  try {
-    const previewId = body.actions[0].value;
-    const previewData = previewStorage.get(previewId);
-    
-    if (!previewData) {
-      throw new Error('Preview data not found');
-    }
-
-    // Toggle the excluded state
-    previewData.excluded = !previewData.excluded;
-    previewStorage.set(previewId, previewData);
-
-    // Get the feedback data
-    const feedbackData = feedbackStorage.get(previewData.feedbackId);
-    if (!feedbackData) {
-      throw new Error('Feedback data not found');
-    }
-
-    // Update just the buttons for this item
     await client.views.update({
       view_id: body.view.id,
-      view: {
-        type: "modal",
-        callback_id: "preview_modal",
-        title: {
-          type: "plain_text",
-          text: "Preview Tickets",
-          emoji: true
-        },
-        blocks: body.view.blocks.map(block => {
-          // If this is the actions block containing our button
-          if (block.type === 'actions' && 
-              block.elements.some(el => el.value === previewId)) {
-            return {
-              ...block,
-              elements: block.elements.map(el => {
-                if (el.action_id === 'toggle_exclude') {
-                  return {
-                    ...el,
-                    text: {
-                      type: "plain_text",
-                      text: previewData.excluded ? "🔄 Include" : "❌ Exclude",
-                      emoji: true
-                    },
-                    style: previewData.excluded ? "primary" : "danger"
-                  };
-                }
-                return el;
-              })
-            };
-          }
-          return block;
-        }),
-        submit: {
-          type: "plain_text",
-          text: "Create Tickets",
-          emoji: true
-        },
-        close: {
-          type: "plain_text",
-          text: "Back",
-          emoji: true
-        },
-        private_metadata: previewData.feedbackId
-      }
+      view: modalView
     });
-
-  } catch (error) {
-    console.error('Error toggling exclusion:', error);
-    await client.chat.postMessage({
-      channel: body.user.id,
-      text: 'Error updating preview. Please try again.'
-    });
-  }
-});
-
-// Handle edit button click
-app.action('edit_description', async ({ ack, body, client }) => {
-  await ack();
-  
-  try {
-    const previewId = body.actions[0].value;
-    console.log('Edit button clicked with previewId:', previewId);
-    console.log('Current preview storage:', Array.from(previewStorage.entries()));
-    
-    const previewData = previewStorage.get(previewId);
-    if (!previewData) {
-      console.error('Preview data not found for ID:', previewId);
-      throw new Error('Preview data not found.');
+  } catch (viewError) {
+    if (viewError.data?.error === 'not_found') {
+      await client.views.open({
+        trigger_id: body.trigger_id,
+        view: modalView
+      });
+    } else {
+      throw viewError;
     }
-
-    console.log('Found preview data:', previewData);
-    const item = previewData.item;
-    
-    // Create edit modal blocks
-    const editBlocks = [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `*Editing: ${item.title}*`
-        }
-      },
-      {
-        type: "input",
-        block_id: "title",
-        element: {
-          type: "plain_text_input",
-          action_id: "title_input",
-          initial_value: item.title || ""
-        },
-        label: {
-          type: "plain_text",
-          text: "Title",
-          emoji: true
-        }
-      },
-      {
-        type: "input",
-        block_id: "description",
-        element: {
-          type: "plain_text_input",
-          action_id: "description_input",
-          multiline: true,
-          initial_value: item.summary || ""
-        },
-        label: {
-          type: "plain_text",
-          text: "Description",
-          emoji: true
-        }
-      },
-      {
-        type: "input",
-        block_id: "user_impact",
-        element: {
-          type: "plain_text_input",
-          action_id: "user_impact_input",
-          multiline: true,
-          initial_value: item.user_impact || ""
-        },
-        label: {
-          type: "plain_text",
-          text: "User Impact",
-          emoji: true
-        }
-      },
-      {
-        type: "input",
-        block_id: "current_behavior",
-        element: {
-          type: "plain_text_input",
-          action_id: "current_behavior_input",
-          multiline: true,
-          initial_value: item.current_behavior || ""
-        },
-        label: {
-          type: "plain_text",
-          text: "Current Behavior",
-          emoji: true
-        }
-      },
-      {
-        type: "input",
-        block_id: "expected_behavior",
-        element: {
-          type: "plain_text_input",
-          action_id: "expected_behavior_input",
-          multiline: true,
-          initial_value: item.expected_behavior || ""
-        },
-        label: {
-          type: "plain_text",
-          text: "Expected Behavior",
-          emoji: true
-        }
-      },
-      {
-        type: "input",
-        block_id: "additional_context",
-        element: {
-          type: "plain_text_input",
-          action_id: "additional_context_input",
-          multiline: true,
-          initial_value: item.additional_context || ""
-        },
-        label: {
-          type: "plain_text",
-          text: "Additional Context",
-          emoji: true
-        },
-        optional: true
-      }
-    ];
-
-    // Open the edit modal
-    const result = await client.views.push({
-      trigger_id: body.trigger_id,
-      view: {
-        type: "modal",
-        callback_id: "edit_description_modal",
-        title: {
-          type: "plain_text",
-          text: "Edit Ticket",
-          emoji: true
-        },
-        blocks: editBlocks,
-        private_metadata: previewId,
-        submit: {
-          type: "plain_text",
-          text: "Save",
-          emoji: true
-        },
-        close: {
-          type: "plain_text",
-          text: "Cancel",
-          emoji: true
-        }
-      }
-    });
-
-    console.log('Edit modal opened successfully:', result);
-  } catch (error) {
-    console.error('Error opening edit modal:', error);
-    console.error('Error details:', error.data || error.message);
-    await client.chat.postMessage({
-      channel: body.user.id,
-      text: 'Error opening edit modal. Please try again.'
-    });
   }
 });
 
@@ -1590,7 +687,13 @@ app.view('edit_description_modal', async ({ ack, body, view, client }) => {
     const previewData = previewStorage.get(previewId);
     
     if (!previewData) {
-      throw new Error('Preview data not found');
+      // Instead of throwing error, send a message to the user
+      await client.chat.postEphemeral({
+        channel: body.user.id,
+        user: body.user.id,
+        text: "Sorry, the preview data was lost. Please try starting over with your feedback submission."
+      });
+      return;
     }
 
     // Get the updated values from the modal
@@ -1612,7 +715,12 @@ app.view('edit_description_modal', async ({ ack, body, view, client }) => {
     // Get the feedback data to rebuild the preview
     const feedbackData = feedbackStorage.get(previewData.feedbackId);
     if (!feedbackData) {
-      throw new Error('Feedback data not found');
+      await client.chat.postEphemeral({
+        channel: body.user.id,
+        user: body.user.id,
+        text: "Sorry, the feedback data was lost. Please try starting over with your feedback submission."
+      });
+      return;
     }
 
     // Store all current exclusion states before rebuilding
@@ -1656,7 +764,7 @@ app.view('edit_description_modal', async ({ ack, body, view, client }) => {
           itemIndex: index,
           description: description,
           item: item,
-          excluded: wasExcluded  // Use the stored exclusion state
+          excluded: wasExcluded
         });
 
         previewBlocks.push(
@@ -1684,12 +792,12 @@ app.view('edit_description_modal', async ({ ack, body, view, client }) => {
                 type: "button",
                 text: {
                   type: "plain_text",
-                  text: previewStorage.get(currentPreviewId)?.excluded ? "🔄 Include" : "❌ Exclude",
+                  text: wasExcluded ? "🔄 Include" : "❌ Exclude",
                   emoji: true
                 },
                 value: currentPreviewId,
                 action_id: "toggle_exclude",
-                style: previewStorage.get(currentPreviewId)?.excluded ? "primary" : "danger"
+                style: wasExcluded ? "primary" : "danger"
               }
             ]
           },
@@ -1700,31 +808,63 @@ app.view('edit_description_modal', async ({ ack, body, view, client }) => {
       });
     }
 
-    // Update the preview modal
-    await client.views.update({
-      view_id: view.root_view_id, // Use root_view_id to update the preview modal
-      view: {
-        type: "modal",
-        callback_id: "preview_modal",
-        title: {
-          type: "plain_text",
-          text: "Preview Tickets",
-          emoji: true
-        },
-        blocks: previewBlocks,
-        submit: {
-          type: "plain_text",
-          text: "Create Tickets",
-          emoji: true
-        },
-        close: {
-          type: "plain_text",
-          text: "Back",
-          emoji: true
-        },
-        private_metadata: previewData.feedbackId
+    // Show preview modal
+    try {
+      await client.views.update({
+        view_id: body.view.id,
+        view: {
+          type: "modal",
+          callback_id: "preview_modal",
+          title: {
+            type: "plain_text",
+            text: "Preview Tickets",
+            emoji: true
+          },
+          blocks: previewBlocks,
+          submit: {
+            type: "plain_text",
+            text: "Create Tickets",
+            emoji: true
+          },
+          close: {
+            type: "plain_text",
+            text: "Back",
+            emoji: true
+          },
+          private_metadata: previewData.feedbackId
+        }
+      });
+    } catch (viewError) {
+      if (viewError.data?.error === 'not_found') {
+        // If view not found, open a new modal instead
+        await client.views.open({
+          trigger_id: body.trigger_id,
+          view: {
+            type: "modal",
+            callback_id: "preview_modal",
+            title: {
+              type: "plain_text",
+              text: "Preview Tickets",
+              emoji: true
+            },
+            blocks: previewBlocks,
+            submit: {
+              type: "plain_text",
+              text: "Create Tickets",
+              emoji: true
+            },
+            close: {
+              type: "plain_text",
+              text: "Back",
+              emoji: true
+            },
+            private_metadata: previewData.feedbackId
+          }
+        });
+      } else {
+        throw viewError;
       }
-    });
+    }
 
   } catch (error) {
     console.error('Error saving changes:', error);
@@ -1735,74 +875,349 @@ app.view('edit_description_modal', async ({ ack, body, view, client }) => {
   }
 });
 
-// Modify the preview modal submission handler
-app.view('preview_modal', async ({ ack, body, view, client }) => {
+// Add handler for summary channel selection submission
+app.view('summary_channel_select', async ({ ack, body, view, client }) => {
+  await ack();
+
   try {
-    await ack();
+    const channels = view.state.values.channel_select.channels_selected.selected_channels;
+    const startDate = view.state.values.date_start.date_start_input.selected_date;
+    const endDate = view.state.values.date_end.date_end_input.selected_date;
+
+    // Fetch and analyze messages from each channel
+    const allFeedback = [];
     
-    console.log('Preview modal submitted:', {
-      body,
-      view,
-      metadata: view.private_metadata
+    for (const channelId of channels) {
+      try {
+        const messages = await getMessagesInDateRange(client, channelId, startDate, endDate);
+        const feedback = await analyzeFeedback(messages);
+        
+        if (feedback.length > 0) {
+          allFeedback.push({
+            channel: channelId,
+            feedback: feedback
+          });
+        }
+      } catch (error) {
+        console.error(`Error processing channel ${channelId}:`, error);
+      }
+    }
+
+    if (allFeedback.length === 0) {
+      await client.chat.postMessage({
+        channel: body.user.id,
+        text: "No feedback items were found in the selected channels and date range."
+      });
+      return;
+    }
+
+    // Create summary blocks
+    const summaryBlocks = [];
+    
+    for (const channelFeedback of allFeedback) {
+      // Get channel info
+      const channelInfo = await client.conversations.info({ channel: channelFeedback.channel });
+      const channelName = channelInfo.channel.name;
+
+      summaryBlocks.push({
+        type: "header",
+        text: {
+          type: "plain_text",
+          text: `Channel: #${channelName}`,
+          emoji: true
+        }
+      });
+
+      channelFeedback.feedback.forEach((item, index) => {
+        summaryBlocks.push(
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `*${index + 1}. ${item.title}*\nType: ${item.type} | Priority: ${item.priority}\n\n*Description:*\n${item.summary}\n\n*User Impact:*\n${item.user_impact || 'Not specified'}\n\n*Current Behavior:*\n${item.current_behavior || 'Not specified'}\n\n*Expected Behavior:*\n${item.expected_behavior || 'Not specified'}\n\n*Additional Context:*\n${item.additional_context || 'Not specified'}\n\n*Reported By:*\n${item.reporter || 'Unknown'}`
+            }
+          },
+          {
+            type: "divider"
+          }
+        );
+      });
+    }
+
+    // Show the summary in a new modal
+    await client.views.push({
+      trigger_id: body.trigger_id,
+      view: {
+        type: "modal",
+        title: {
+          type: "plain_text",
+          text: "Feedback Summary",
+          emoji: true
+        },
+        blocks: summaryBlocks,
+        close: {
+          type: "plain_text",
+          text: "Close",
+          emoji: true
+        }
+      }
     });
+
+  } catch (error) {
+    console.error('Error generating summary:', error);
+    await client.chat.postMessage({
+      channel: body.user.id,
+      text: `Error generating summary: ${error.message}`
+    });
+  }
+});
+
+// Add handler for Jira project selection submission
+app.view('jira_project_select', async ({ ack, body, view, client }) => {
+  await ack();
+
+  try {
+    const projectKey = view.state.values.project_key.project_key_input.value;
+    const channels = view.state.values.channel_select.channels_selected.selected_channels;
+    const startDate = view.state.values.date_start.date_start_input.selected_date;
+    const endDate = view.state.values.date_end.date_end_input.selected_date;
+
+    // Generate a unique feedback ID
+    const feedbackId = generateId();
+
+    // Fetch and analyze messages from each channel
+    const allFeedback = [];
     
+    for (const channelId of channels) {
+      try {
+        const messages = await getMessagesInDateRange(client, channelId, startDate, endDate);
+        const feedback = await analyzeFeedback(messages);
+        
+        if (feedback.length > 0) {
+          allFeedback.push({
+            channel: channelId,
+            feedback: feedback
+          });
+        }
+      } catch (error) {
+        console.error(`Error processing channel ${channelId}:`, error);
+      }
+    }
+
+    if (allFeedback.length === 0) {
+      await client.chat.postMessage({
+        channel: body.user.id,
+        text: "No feedback items were found in the selected channels and date range."
+      });
+      return;
+    }
+
+    // Store feedback data
+    feedbackStorage.set(feedbackId, {
+      feedback: allFeedback,
+      projectKey: projectKey
+    });
+
+    // Create preview blocks
+    const previewBlocks = [];
+    
+    for (const channelFeedback of allFeedback) {
+      // Get channel info
+      const channelInfo = await client.conversations.info({ channel: channelFeedback.channel });
+      const channelName = channelInfo.channel.name;
+
+      previewBlocks.push({
+        type: "header",
+        text: {
+          type: "plain_text",
+          text: `Channel: #${channelName}`,
+          emoji: true
+        }
+      });
+
+      channelFeedback.feedback.forEach((item, index) => {
+        const previewId = generateId();
+        const description = `*Description:*\n${item.summary}\n\n*User Impact:*\n${item.user_impact || 'Not specified'}\n\n*Current Behavior:*\n${item.current_behavior || 'Not specified'}\n\n*Expected Behavior:*\n${item.expected_behavior || 'Not specified'}\n\n*Additional Context:*\n${item.additional_context || item.summary}`;
+        
+        previewStorage.set(previewId, {
+          feedbackId: feedbackId,
+          channelIndex: channelFeedback.channel,
+          itemIndex: index,
+          description: description,
+          item: item,
+          excluded: false
+        });
+
+        previewBlocks.push(
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `*${index + 1}. ${item.title}*\nType: ${item.type} | Priority: ${item.priority}\n\n${description}`
+            }
+          },
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: {
+                  type: "plain_text",
+                  text: "✏️ Edit",
+                  emoji: true
+                },
+                value: previewId,
+                action_id: "edit_description"
+              },
+              {
+                type: "button",
+                text: {
+                  type: "plain_text",
+                  text: "❌ Exclude",
+                  emoji: true
+                },
+                value: previewId,
+                action_id: "toggle_exclude",
+                style: "danger"
+              }
+            ]
+          },
+          {
+            type: "divider"
+          }
+        );
+      });
+    }
+
+    // Create the modal view object
+    const modalView = {
+      type: "modal",
+      callback_id: "preview_modal",
+      title: {
+        type: "plain_text",
+        text: "Preview Tickets",
+        emoji: true
+      },
+      blocks: previewBlocks,
+      submit: {
+        type: "plain_text",
+        text: "Create Tickets",
+        emoji: true
+      },
+      close: {
+        type: "plain_text",
+        text: "Back",
+        emoji: true
+      },
+      private_metadata: feedbackId
+    };
+
+    // Try to update the view, fall back to opening a new one if needed
+    try {
+      await client.views.update({
+        view_id: body.view.id,
+        view: modalView
+      });
+    } catch (viewError) {
+      if (viewError.data?.error === 'not_found') {
+        await client.views.open({
+          trigger_id: body.trigger_id,
+          view: modalView
+        });
+      } else {
+        throw viewError;
+      }
+    }
+
+  } catch (error) {
+    console.error('Error creating preview:', error);
+    await client.chat.postMessage({
+      channel: body.user.id,
+      text: `Error creating preview: ${error.message}`
+    });
+  }
+});
+
+// Add handler for preview modal submission (creating Jira tickets)
+app.view('preview_modal', async ({ ack, body, view, client }) => {
+  await ack();
+
+  try {
     const feedbackId = view.private_metadata;
     const feedbackData = feedbackStorage.get(feedbackId);
     
     if (!feedbackData) {
-      console.error('Feedback data not found for ID:', feedbackId);
-      throw new Error('Feedback data not found');
+      await client.chat.postMessage({
+        channel: body.user.id,
+        text: "Sorry, the feedback data was lost. Please try starting over."
+      });
+      return;
     }
 
-    console.log('Found feedback data:', feedbackData);
+    // Get all preview items that aren't excluded
+    const includedItems = Array.from(previewStorage.entries())
+      .filter(([_, data]) => data.feedbackId === feedbackId && !data.excluded)
+      .map(([_, data]) => data.item);
 
-    // Create input blocks for each channel
-    const blocks = [];
-    feedbackData.feedback.forEach(channelFeedback => {
-      console.log('Processing channel:', channelFeedback.channel);
-      blocks.push(
-        {
-          type: "header",
-          text: {
-            type: "plain_text",
-            text: `Channel: #${channelFeedback.channel}`,
-            emoji: true
-          }
-        },
-        {
-          type: "input",
-          block_id: `project_key_${channelFeedback.channel}`,
-          element: {
-            type: "plain_text_input",
-            action_id: "project_key_input",
-            placeholder: {
+    if (includedItems.length === 0) {
+      await client.chat.postMessage({
+        channel: body.user.id,
+        text: "No tickets to create. All items have been excluded."
+      });
+      return;
+    }
+
+    // Create project key selection blocks
+    const projectKeyBlocks = [];
+    
+    for (const channelFeedback of feedbackData.feedback) {
+      // Only show channels that have included items
+      const hasIncludedItems = Array.from(previewStorage.entries())
+        .some(([_, data]) => 
+          data.feedbackId === feedbackId && 
+          !data.excluded && 
+          data.channelIndex === channelFeedback.channel
+        );
+
+      if (hasIncludedItems) {
+        const channelInfo = await client.conversations.info({ channel: channelFeedback.channel });
+        const channelName = channelInfo.channel.name;
+
+        projectKeyBlocks.push(
+          {
+            type: "input",
+            block_id: `project_key_${channelFeedback.channel}`,
+            element: {
+              type: "plain_text_input",
+              action_id: "project_key_input",
+              placeholder: {
+                type: "plain_text",
+                text: "Enter Jira project key (e.g., PROJ)",
+                emoji: true
+              }
+            },
+            label: {
               type: "plain_text",
-              text: "Enter Jira project key (e.g., DIVAI)"
+              text: `Project Key for #${channelName}`,
+              emoji: true
             }
-          },
-          label: {
-            type: "plain_text",
-            text: "Jira Project Key",
-            emoji: true
           }
-        }
-      );
-    });
+        );
+      }
+    }
 
-    console.log('Opening project selection modal with blocks:', blocks);
-
-    // Open the project selection modal
-    const result = await client.views.open({
+    // Show project key selection modal
+    await client.views.push({
       trigger_id: body.trigger_id,
       view: {
         type: "modal",
-        callback_id: "project_selection",
+        callback_id: "project_key_select",
         title: {
           type: "plain_text",
-          text: "Select Jira Projects",
+          text: "Select Project Keys",
           emoji: true
         },
-        blocks: blocks,
+        blocks: projectKeyBlocks,
         submit: {
           type: "plain_text",
           text: "Create Tickets",
@@ -1812,37 +1227,97 @@ app.view('preview_modal', async ({ ack, body, view, client }) => {
       }
     });
 
-    console.log('Project selection modal opened:', result);
-
   } catch (error) {
-    console.error('Error in preview_modal handler:', error);
-    console.error('Error details:', error.data || error.message);
-    
-    try {
-      await ack({
-        response_action: "errors",
-        errors: {
-          "block_id": "Error opening project selection modal. Please try again."
-        }
-      });
-    } catch (ackError) {
-      console.error('Error sending ack with errors:', ackError);
-    }
-
+    console.error('Error showing project key selection:', error);
     await client.chat.postMessage({
       channel: body.user.id,
-      text: `Error opening project selection: ${error.message}`
+      text: `Error showing project key selection: ${error.message}`
     });
   }
 });
 
-// Add handler for Jira ticket creation mode
+// Add handler for project key selection and final ticket creation
+app.view('project_key_select', async ({ ack, body, view, client }) => {
+  await ack();
+
+  try {
+    const feedbackId = view.private_metadata;
+    const feedbackData = feedbackStorage.get(feedbackId);
+    
+    if (!feedbackData) {
+      await client.chat.postMessage({
+        channel: body.user.id,
+        text: "Sorry, the feedback data was lost. Please try starting over."
+      });
+      return;
+    }
+
+    // Create Jira tickets for each channel with its project key
+    let allResults = [];
+    
+    for (const channelFeedback of feedbackData.feedback) {
+      const projectKey = view.state.values[`project_key_${channelFeedback.channel}`]?.project_key_input?.value;
+      
+      if (projectKey) {
+        // Get included items for this channel
+        const channelItems = Array.from(previewStorage.entries())
+          .filter(([_, data]) => 
+            data.feedbackId === feedbackId && 
+            !data.excluded && 
+            data.channelIndex === channelFeedback.channel
+          )
+          .map(([_, data]) => data.item);
+
+        if (channelItems.length > 0) {
+          // Convert feedback to Jira format
+          const jiraIssues = await convertToJiraFormat(channelItems, projectKey);
+          
+          // Create Jira tickets
+          const results = await createJiraIssues(jiraIssues);
+          allResults = allResults.concat(results);
+        }
+      }
+    }
+
+    // Send results to user
+    let message = "*Jira Ticket Creation Results:*\n\n";
+    
+    const created = allResults.filter(r => r.status === 'created');
+    const duplicates = allResults.filter(r => r.status === 'duplicate');
+    const errors = allResults.filter(r => r.status === 'error');
+
+    if (created.length > 0) {
+      message += `*Created Tickets:*\n${created.map(r => `• <${process.env.JIRA_HOST}/browse/${r.key}|${r.key}> - ${r.summary}`).join('\n')}\n\n`;
+    }
+
+    if (duplicates.length > 0) {
+      message += `*Potential Duplicates:*\n${duplicates.map(r => `• ${r.summary} (similar to <${process.env.JIRA_HOST}/browse/${r.existingIssue}|${r.existingIssue}>)`).join('\n')}\n\n`;
+    }
+
+    if (errors.length > 0) {
+      message += `*Errors:*\n${errors.map(r => `• ${r.summary}: ${r.error}`).join('\n')}\n\n`;
+    }
+
+    await client.chat.postMessage({
+      channel: body.user.id,
+      text: message,
+      mrkdwn: true
+    });
+
+  } catch (error) {
+    console.error('Error creating Jira tickets:', error);
+    await client.chat.postMessage({
+      channel: body.user.id,
+      text: `Error creating Jira tickets: ${error.message}`
+    });
+  }
+});
+
+// Update the Jira mode handler to only show channel and date selection
 app.action('mode_jira', async ({ ack, body, client }) => {
   await ack();
-  
-  console.log('Jira ticket mode selected');
 
-  // Show channel selection modal with custom prompt for tickets
+  // Show only channel selection and date range initially
   const blocks = [
     {
       type: "section",
@@ -1853,19 +1328,20 @@ app.action('mode_jira', async ({ ack, body, client }) => {
     },
     {
       type: "input",
-      block_id: "channels_block",
+      block_id: "channel_select",
       element: {
         type: "multi_channels_select",
-        action_id: "channels_input",
         placeholder: {
           type: "plain_text",
-          text: "Select channels to collect feedback from"
+          text: "Select channels",
+          emoji: true
         },
-        max_selected_items: 10
+        action_id: "channels_selected"
       },
       label: {
         type: "plain_text",
-        text: "Choose Channels"
+        text: "Channels",
+        emoji: true
       }
     },
     {
@@ -1882,7 +1358,8 @@ app.action('mode_jira', async ({ ack, body, client }) => {
       },
       label: {
         type: "plain_text",
-        text: "Start Date"
+        text: "Start Date",
+        emoji: true
       }
     },
     {
@@ -1899,35 +1376,208 @@ app.action('mode_jira', async ({ ack, body, client }) => {
       },
       label: {
         type: "plain_text",
-        text: "End Date"
+        text: "End Date",
+        emoji: true
       }
     }
   ];
 
+  // Create the modal view object
+  const modalView = {
+    type: "modal",
+    callback_id: "feedback_collection",
+    title: {
+      type: "plain_text",
+      text: "Collect Feedback",
+      emoji: true
+    },
+    blocks: blocks,
+    submit: {
+      type: "plain_text",
+      text: "Collect",
+      emoji: true
+    }
+  };
+
+  // Try to update the view, fall back to opening a new one if needed
   try {
-    console.log('Updating view with channel selection blocks');
     await client.views.update({
       view_id: body.view.id,
-      view: {
-        type: "modal",
-        callback_id: "feedback_channels",
-        title: {
+      view: modalView
+    });
+  } catch (viewError) {
+    if (viewError.data?.error === 'not_found') {
+      await client.views.open({
+        trigger_id: body.trigger_id,
+        view: modalView
+      });
+    } else {
+      throw viewError;
+    }
+  }
+});
+
+// Add handler for initial feedback collection
+app.view('feedback_collection', async ({ ack, body, view, client }) => {
+  await ack();
+
+  try {
+    const channels = view.state.values.channel_select.channels_selected.selected_channels;
+    const startDate = view.state.values.date_start.date_start_input.selected_date;
+    const endDate = view.state.values.date_end.date_end_input.selected_date;
+
+    // Generate a unique feedback ID
+    const feedbackId = generateId();
+
+    // Fetch and analyze messages from each channel
+    const allFeedback = [];
+    
+    for (const channelId of channels) {
+      try {
+        const messages = await getMessagesInDateRange(client, channelId, startDate, endDate);
+        const feedback = await analyzeFeedback(messages);
+        
+        if (feedback.length > 0) {
+          allFeedback.push({
+            channel: channelId,
+            feedback: feedback
+          });
+        }
+      } catch (error) {
+        console.error(`Error processing channel ${channelId}:`, error);
+      }
+    }
+
+    if (allFeedback.length === 0) {
+      await client.chat.postMessage({
+        channel: body.user.id,
+        text: "No feedback items were found in the selected channels and date range."
+      });
+      return;
+    }
+
+    // Store feedback data without project key yet
+    feedbackStorage.set(feedbackId, {
+      feedback: allFeedback
+    });
+
+    // Create preview blocks
+    const previewBlocks = [];
+    
+    for (const channelFeedback of allFeedback) {
+      // Get channel info
+      const channelInfo = await client.conversations.info({ channel: channelFeedback.channel });
+      const channelName = channelInfo.channel.name;
+
+      previewBlocks.push({
+        type: "header",
+        text: {
           type: "plain_text",
-          text: "Collect Feedback",
-          emoji: true
-        },
-        blocks: blocks,
-        submit: {
-          type: "plain_text",
-          text: "Collect Feedback",
+          text: `Channel: #${channelName}`,
           emoji: true
         }
+      });
+
+      channelFeedback.feedback.forEach((item, index) => {
+        const previewId = generateId();
+        const description = `*Description:*\n${item.summary}\n\n*User Impact:*\n${item.user_impact || 'Not specified'}\n\n*Current Behavior:*\n${item.current_behavior || 'Not specified'}\n\n*Expected Behavior:*\n${item.expected_behavior || 'Not specified'}\n\n*Additional Context:*\n${item.additional_context || item.summary}`;
+        
+        previewStorage.set(previewId, {
+          feedbackId: feedbackId,
+          channelIndex: channelFeedback.channel,
+          itemIndex: index,
+          description: description,
+          item: item,
+          excluded: false
+        });
+
+        previewBlocks.push(
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `*${index + 1}. ${item.title}*\nType: ${item.type} | Priority: ${item.priority}\n\n${description}`
+            }
+          },
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: {
+                  type: "plain_text",
+                  text: "✏️ Edit",
+                  emoji: true
+                },
+                value: previewId,
+                action_id: "edit_description"
+              },
+              {
+                type: "button",
+                text: {
+                  type: "plain_text",
+                  text: "❌ Exclude",
+                  emoji: true
+                },
+                value: previewId,
+                action_id: "toggle_exclude",
+                style: "danger"
+              }
+            ]
+          },
+          {
+            type: "divider"
+          }
+        );
+      });
+    }
+
+    // Create the modal view object
+    const modalView = {
+      type: "modal",
+      callback_id: "preview_modal",
+      title: {
+        type: "plain_text",
+        text: "Preview Tickets",
+        emoji: true
+      },
+      blocks: previewBlocks,
+      submit: {
+        type: "plain_text",
+        text: "Create Tickets",
+        emoji: true
+      },
+      close: {
+        type: "plain_text",
+        text: "Back",
+        emoji: true
+      },
+      private_metadata: feedbackId
+    };
+
+    // Try to update the view, fall back to opening a new one if needed
+    try {
+      await client.views.update({
+        view_id: body.view.id,
+        view: modalView
+      });
+    } catch (viewError) {
+      if (viewError.data?.error === 'not_found') {
+        await client.views.open({
+          trigger_id: body.trigger_id,
+          view: modalView
+        });
+      } else {
+        throw viewError;
       }
-    });
-    console.log('View updated successfully');
+    }
+
   } catch (error) {
-    console.error('Error updating view:', error);
-    console.error('Error details:', error.data || error.message);
+    console.error('Error creating preview:', error);
+    await client.chat.postMessage({
+      channel: body.user.id,
+      text: `Error creating preview: ${error.message}`
+    });
   }
 });
 
