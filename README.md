@@ -129,7 +129,7 @@ The app recognizes different channel types and adjusts analysis accordingly:
 
 ## License
 
-Choose your own license
+MIT License
 
 ## Support
 
