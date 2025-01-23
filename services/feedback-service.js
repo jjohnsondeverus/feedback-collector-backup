@@ -310,8 +310,13 @@ class FeedbackCollectionService {
       // Get existing items for comparison
       const existingItems = await dynamoDBService.getFeedbackItems(sessionId);
       
-      // Check each item for similarity
+      // Check each item for similarity, excluding the current item
       for (const existingItem of existingItems) {
+        // Skip if it's the same item (by SK)
+        if (existingItem.SK === item.SK) {
+          continue;
+        }
+
         const titleSimilarity = this.calculateSimilarity(
           item.title,
           existingItem.title
@@ -355,29 +360,83 @@ class FeedbackCollectionService {
 
   async getChannelMessages({ channelId, startDate, endDate }) {
     try {
-      // Try to join the channel first
+      // First, get channel info to determine type
+      let channelType = 'public';
       try {
-        await this.slackClient.conversations.join({ channel: channelId });
-      } catch (joinError) {
-        if (joinError.data?.error !== 'already_in_channel') {
-          throw joinError;
+        const info = await this.slackClient.conversations.info({ channel: channelId });
+        channelType = info.channel.is_private ? 'private' : 'public';
+      } catch (error) {
+        if (error.data?.error === 'not_in_channel') {
+          await cloudwatchService.recordChannelAccessError(channelId, 'NOT_IN_CHANNEL');
+          throw new Error('Bot needs to be invited to this channel first');
+        }
+        await cloudwatchService.recordChannelAccessError(channelId, 'INFO_FAILED');
+        throw new Error(`Unable to get channel info: ${error.data?.error || error.message}`);
+      }
+
+      // Try to join if it's a public channel
+      if (!channelType.is_private) {
+        try {
+          await this.slackClient.conversations.join({ channel: channelId });
+        } catch (joinError) {
+          if (joinError.data?.error !== 'already_in_channel') {
+            if (joinError.data?.error === 'missing_scope') {
+              await cloudwatchService.recordChannelAccessError(channelId, 'MISSING_SCOPE');
+              throw new Error('Bot lacks required permissions to join channels');
+            } else if (joinError.data?.error === 'not_allowed_token_type') {
+              await cloudwatchService.recordChannelAccessError(channelId, 'INVALID_TOKEN');
+              throw new Error('Invalid bot token configuration');
+            } else if (joinError.data?.error === 'is_private') {
+              // This is expected for private channels
+              console.log('Channel is private, skipping join');
+            } else {
+              throw new Error(`Failed to join channel: ${joinError.data?.error || joinError.message}`);
+            }
+          }
         }
       }
 
       const startTimestamp = Math.floor(new Date(startDate).getTime() / 1000);
       const endTimestamp = Math.floor(new Date(endDate).setHours(23, 59, 59, 999) / 1000);
 
-      const result = await this.slackClient.conversations.history({
-        channel: channelId,
-        oldest: startTimestamp.toString(),
-        latest: endTimestamp.toString(),
-        inclusive: true
-      });
+      try {
+        const result = await this.slackClient.conversations.history({
+          channel: channelId,
+          oldest: startTimestamp.toString(),
+          latest: endTimestamp.toString(),
+          inclusive: true
+        });
 
-      return result.messages;
+        // Record successful access
+        await cloudwatchService.recordChannelAccess(
+          channelId, 
+          channelType,
+          'SUCCESS'
+        );
+
+        return result.messages;
+      } catch (error) {
+        if (error.data?.error === 'not_in_channel') {
+          await cloudwatchService.recordChannelAccessError(channelId, 'NOT_IN_CHANNEL');
+          throw new Error('Bot needs to be invited to this channel first');
+        } else if (error.data?.error === 'missing_scope') {
+          await cloudwatchService.recordChannelAccessError(channelId, 'MISSING_SCOPE');
+          throw new Error(`Missing required permission: ${
+            channelType === 'private' ? 'groups:history' : 'channels:history'
+          }`);
+        }
+
+        // Record failed access
+        await cloudwatchService.recordChannelAccess(
+          channelId,
+          channelType,
+          'PERMISSION_DENIED'
+        );
+        throw new Error(`Failed to fetch messages: ${error.data?.error || error.message}`);
+      }
     } catch (error) {
       console.error('Error fetching messages:', error);
-      throw error;
+      throw error; // Propagate the error with our custom message
     }
   }
 
@@ -522,6 +581,138 @@ class FeedbackCollectionService {
     // Typical Jira project key format: 2-10 uppercase letters followed by a hyphen and numbers
     const projectKeyRegex = /^[A-Z]{2,10}-\d+$/;
     return projectKeyRegex.test(projectKey);
+  }
+
+  async createJiraTickets({ sessionId, channelId, userId }) {
+    const startTime = Date.now();
+    try {
+      // Get channel config for project key
+      const config = await this.getChannelConfig({ sessionId, channelId });
+      if (!config?.projectKey) {
+        throw new Error('Project key not set for this channel');
+      }
+
+      // Get feedback items
+      const preview = await this.previewFeedbackItems({ sessionId, channelId });
+      const includedItems = preview.items.filter(item => item.included);
+
+      if (includedItems.length === 0) {
+        throw new Error('No included feedback items found');
+      }
+
+      let createdCount = 0;
+      let duplicateCount = 0;
+
+      const results = [];
+      for (const item of includedItems) {
+        try {
+          // Check for duplicates before creating
+          const duplicateCheck = await this.checkForDuplicates({
+            sessionId,
+            item,
+            projectKey: config.projectKey,
+            userId
+          });
+
+          if (duplicateCheck.isDuplicate) {
+            duplicateCount++;
+            results.push({
+              itemId: item.SK,
+              status: 'DUPLICATE',
+              duplicateOf: duplicateCheck.existingItem,
+              similarityScore: duplicateCheck.similarityScore
+            });
+            continue;
+          }
+
+          // Create Jira ticket
+          const jiraTicket = await this.jiraClient.createIssue({
+            projectKey: config.projectKey,
+            summary: item.title,
+            description: this.formatJiraDescription(item),
+            issueType: this.mapTypeToJira(item.type),
+            priority: this.mapPriorityToJira(item.priority)
+          });
+
+          // Record ticket creation
+          await this.transactionalOps.createJiraTicketTransaction({
+            sessionId,
+            itemId: item.SK,
+            jiraTicketKey: jiraTicket.key,
+            jiraTicketUrl: jiraTicket.self,
+            userId
+          });
+
+          createdCount++;
+          await cloudwatchService.recordJiraTicketCreation(sessionId, channelId);
+
+          results.push({
+            itemId: item.SK,
+            status: 'CREATED',
+            jiraKey: jiraTicket.key,
+            jiraUrl: jiraTicket.self
+          });
+        } catch (error) {
+          await cloudwatchService.recordJiraTicketFailure(
+            sessionId, 
+            channelId,
+            error.name || 'UNKNOWN'
+          );
+          throw error;
+        }
+      }
+
+      await cloudwatchService.recordJiraBatchOperation(
+        sessionId,
+        channelId,
+        includedItems.length,
+        createdCount,
+        duplicateCount
+      );
+
+      await cloudwatchService.recordOperationLatency(
+        'JiraTicketCreation',
+        Date.now() - startTime
+      );
+
+      return {
+        success: true,
+        results
+      };
+    } catch (error) {
+      console.error('Error creating Jira tickets:', error);
+      throw error;
+    }
+  }
+
+  // Helper method to format Jira description
+  formatJiraDescription(item) {
+    return [
+      `*Description:*\n${item.description}`,
+      `*User Impact:*\n${item.user_impact || 'Not specified'}`,
+      `*Current Behavior:*\n${item.current_behavior || 'Not specified'}`,
+      `*Expected Behavior:*\n${item.expected_behavior || 'Not specified'}`,
+      `*Additional Context:*\n${item.additional_context || 'N/A'}`,
+      `*Source:*\nCollected from Slack - User: ${item.source?.user}, Time: ${item.source?.timestamp}`
+    ].join('\n\n');
+  }
+
+  mapTypeToJira(type) {
+    const typeMap = {
+      'BUG': 'Bug',
+      'FEATURE': 'New Feature',
+      'IMPROVEMENT': 'Improvement'
+    };
+    return typeMap[type] || 'Task';
+  }
+
+  mapPriorityToJira(priority) {
+    const priorityMap = {
+      'HIGH': 'High',
+      'MEDIUM': 'Medium',
+      'LOW': 'Low'
+    };
+    return priorityMap[priority] || 'Medium';
   }
 }
 

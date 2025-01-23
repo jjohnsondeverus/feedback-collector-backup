@@ -70,9 +70,29 @@ class CloudWatchService {
     ]);
   }
 
-  async recordJiraTicketCreation(sessionId) {
+  async recordJiraTicketCreation(sessionId, channelId, status = 'SUCCESS') {
     await this.recordMetric('JiraTicketsCreated', 1, 'Count', [
-      { Name: 'SessionId', Value: sessionId }
+      { Name: 'SessionId', Value: sessionId },
+      { Name: 'ChannelId', Value: channelId },
+      { Name: 'Status', Value: status }
+    ]);
+  }
+
+  async recordJiraTicketFailure(sessionId, channelId, errorType) {
+    await this.recordMetric('JiraTicketFailures', 1, 'Count', [
+      { Name: 'SessionId', Value: sessionId },
+      { Name: 'ChannelId', Value: channelId },
+      { Name: 'ErrorType', Value: errorType }
+    ]);
+  }
+
+  async recordJiraBatchOperation(sessionId, channelId, totalItems, createdItems, duplicates) {
+    await this.recordMetric('JiraBatchOperations', 1, 'Count', [
+      { Name: 'SessionId', Value: sessionId },
+      { Name: 'ChannelId', Value: channelId },
+      { Name: 'TotalItems', Value: totalItems.toString() },
+      { Name: 'CreatedItems', Value: createdItems.toString() },
+      { Name: 'Duplicates', Value: duplicates.toString() }
     ]);
   }
 
@@ -96,6 +116,21 @@ class CloudWatchService {
       { Name: 'ChannelId', Value: channelId },
       { Name: 'UserId', Value: userId },
       { Name: 'AttemptedKey', Value: attemptedKey }
+    ]);
+  }
+
+  async recordChannelAccess(channelId, channelType, status) {
+    await this.recordMetric('ChannelAccess', 1, 'Count', [
+      { Name: 'ChannelId', Value: channelId },
+      { Name: 'ChannelType', Value: channelType }, // 'public' or 'private'
+      { Name: 'Status', Value: status }  // 'SUCCESS' or 'PERMISSION_DENIED'
+    ]);
+  }
+
+  async recordChannelAccessError(channelId, errorType) {
+    await this.recordMetric('ChannelAccessErrors', 1, 'Count', [
+      { Name: 'ChannelId', Value: channelId },
+      { Name: 'ErrorType', Value: errorType }
     ]);
   }
 }
