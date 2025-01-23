@@ -8,6 +8,8 @@ node_modules/
 # Logs
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # IDE files
 .vscode/
@@ -19,6 +21,36 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
-# SpecStory
+# Project specific
+migration-guide.md
+## SpecStory.md
+.specstory/
 SpecStory.md
+
+# AWS
+.aws/
+*.pem
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Test coverage
+coverage/
+
+# Temporary files
+*.tmp
+*.temp
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Debug logs
+debug.log*
+
+# Docker
+docker-compose.override.yml
 
