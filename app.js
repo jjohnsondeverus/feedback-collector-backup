@@ -820,6 +820,20 @@ app.view('collect_feedback_modal', async ({ ack, body, view, client }) => {
 
 // Create the preview modal view
 function createPreviewModal(items) {
+  // Helper to ensure valid type value
+  const normalizeType = (type) => {
+    const validTypes = ['bug', 'feature', 'improvement'];
+    const normalized = type?.toLowerCase() || 'bug';
+    return validTypes.includes(normalized) ? normalized : 'bug';
+  };
+
+  // Helper to ensure valid priority value
+  const normalizePriority = (priority) => {
+    const validPriorities = ['high', 'medium', 'low'];
+    const normalized = priority?.toLowerCase() || 'medium';
+    return validPriorities.includes(normalized) ? normalized : 'medium';
+  };
+
   return {
     type: 'modal',
     callback_id: 'preview_feedback_modal',
@@ -828,115 +842,120 @@ function createPreviewModal(items) {
       text: 'Feedback Preview'
     },
     blocks: [
-      ...items.map((item, index) => ([
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `*${index + 1}. ${item.title}*`
+      ...items.map((item, index) => {
+        const type = normalizeType(item.type);
+        const priority = normalizePriority(item.priority);
+
+        return [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*${index + 1}. ${item.title}*\n${item.summary || ''}`
+            },
+            accessory: {
+              type: 'checkboxes',
+              action_id: `include_item_${index}`,
+              initial_options: [{
+                text: { type: 'plain_text', text: 'Include' },
+                value: `${index}`
+              }],
+              options: [{
+                text: { type: 'plain_text', text: 'Include' },
+                value: `${index}`
+              }]
+            }
           },
-          accessory: {
-            type: 'checkboxes',
-            action_id: `include_item_${index}`,
-            initial_options: [{
-              text: { type: 'plain_text', text: 'Include' },
-              value: `${index}`
-            }],
-            options: [{
-              text: { type: 'plain_text', text: 'Include' },
-              value: `${index}`
-            }]
+          {
+            type: 'input',
+            block_id: `edit_title_${index}`,
+            optional: true,
+            label: { type: 'plain_text', text: 'Title' },
+            element: {
+              type: 'plain_text_input',
+              action_id: 'title_input',
+              initial_value: item.title
+            }
+          },
+          {
+            type: 'input',
+            block_id: `edit_type_${index}`,
+            optional: true,
+            label: { type: 'plain_text', text: 'Type' },
+            element: {
+              type: 'static_select',
+              action_id: 'type_input',
+              initial_option: {
+                text: { type: 'plain_text', text: type.charAt(0).toUpperCase() + type.slice(1) },
+                value: type
+              },
+              options: [
+                { text: { type: 'plain_text', text: 'Bug' }, value: 'bug' },
+                { text: { type: 'plain_text', text: 'Feature' }, value: 'feature' },
+                { text: { type: 'plain_text', text: 'Improvement' }, value: 'improvement' }
+              ]
+            }
+          },
+          {
+            type: 'input',
+            block_id: `edit_priority_${index}`,
+            optional: true,
+            label: { type: 'plain_text', text: 'Priority' },
+            element: {
+              type: 'static_select',
+              action_id: 'priority_input',
+              initial_option: {
+                text: { type: 'plain_text', text: priority.charAt(0).toUpperCase() + priority.slice(1) },
+                value: priority
+              },
+              options: [
+                { text: { type: 'plain_text', text: 'High' }, value: 'high' },
+                { text: { type: 'plain_text', text: 'Medium' }, value: 'medium' },
+                { text: { type: 'plain_text', text: 'Low' }, value: 'low' }
+              ]
+            }
+          },
+          {
+            type: 'input',
+            block_id: `edit_impact_${index}`,
+            optional: true,
+            label: { type: 'plain_text', text: 'User Impact' },
+            element: {
+              type: 'plain_text_input',
+              action_id: 'impact_input',
+              initial_value: item.user_impact,
+              multiline: true
+            }
+          },
+          {
+            type: 'input',
+            block_id: `edit_current_${index}`,
+            optional: true,
+            label: { type: 'plain_text', text: 'Current Behavior' },
+            element: {
+              type: 'plain_text_input',
+              action_id: 'current_input',
+              initial_value: item.current_behavior || '',
+              multiline: true
+            }
+          },
+          {
+            type: 'input',
+            block_id: `edit_expected_${index}`,
+            optional: true,
+            label: { type: 'plain_text', text: 'Expected Behavior' },
+            element: {
+              type: 'plain_text_input',
+              action_id: 'expected_input',
+              initial_value: item.expected_behavior || '',
+              multiline: true
+            }
+          },
+          {
+            type: 'divider'
           }
-        },
-        {
-          type: 'input',
-          block_id: `edit_title_${index}`,
-          optional: true,
-          label: { type: 'plain_text', text: 'Title' },
-          element: {
-            type: 'plain_text_input',
-            action_id: 'title_input',
-            initial_value: item.title
-          }
-        },
-        {
-          type: 'input',
-          block_id: `edit_type_${index}`,
-          optional: true,
-          label: { type: 'plain_text', text: 'Type' },
-          element: {
-            type: 'static_select',
-            action_id: 'type_input',
-            initial_option: {
-              text: { type: 'plain_text', text: item.type },
-              value: item.type
-            },
-            options: [
-              { text: { type: 'plain_text', text: 'Bug' }, value: 'bug' },
-              { text: { type: 'plain_text', text: 'Feature' }, value: 'feature' },
-              { text: { type: 'plain_text', text: 'Improvement' }, value: 'improvement' }
-            ]
-          }
-        },
-        {
-          type: 'input',
-          block_id: `edit_priority_${index}`,
-          optional: true,
-          label: { type: 'plain_text', text: 'Priority' },
-          element: {
-            type: 'static_select',
-            action_id: 'priority_input',
-            initial_option: {
-              text: { type: 'plain_text', text: item.priority },
-              value: item.priority
-            },
-            options: [
-              { text: { type: 'plain_text', text: 'High' }, value: 'high' },
-              { text: { type: 'plain_text', text: 'Medium' }, value: 'medium' },
-              { text: { type: 'plain_text', text: 'Low' }, value: 'low' }
-            ]
-          }
-        },
-        {
-          type: 'input',
-          block_id: `edit_impact_${index}`,
-          optional: true,
-          label: { type: 'plain_text', text: 'User Impact' },
-          element: {
-            type: 'plain_text_input',
-            action_id: 'impact_input',
-            initial_value: item.user_impact,
-            multiline: true
-          }
-        },
-        {
-          type: 'input',
-          block_id: `edit_current_${index}`,
-          optional: true,
-          label: { type: 'plain_text', text: 'Current Behavior' },
-          element: {
-            type: 'plain_text_input',
-            action_id: 'current_input',
-            initial_value: item.current_behavior || '',
-            multiline: true
-          }
-        },
-        {
-          type: 'input',
-          block_id: `edit_expected_${index}`,
-          optional: true,
-          label: { type: 'plain_text', text: 'Expected Behavior' },
-          element: {
-            type: 'plain_text_input',
-            action_id: 'expected_input',
-            initial_value: item.expected_behavior || '',
-            multiline: true
-          }
-        },
-        {
-          type: 'divider'
-        }
-      ])).flat()
+        ];
+      }).flat()
     ],
     submit: {
       type: 'plain_text',
