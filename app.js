@@ -32,7 +32,7 @@ const app = new App({
 // Initialize Jira client
 const jira = new JiraApi({
   protocol: 'https',
-  host: process.env.JIRA_HOST,
+  host: process.env.JIRA_HOST?.replace(/^https?:\/\//, ''),  // Remove protocol if present
   username: process.env.JIRA_USERNAME,
   password: process.env.JIRA_API_TOKEN,
   apiVersion: '2',

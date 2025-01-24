@@ -8,7 +8,7 @@ class FeedbackCollectionService {
     this.slackClient = services.slackClient;
     this.jira = new (require('jira-client'))({
       protocol: 'https',
-      host: process.env.JIRA_HOST,
+      host: process.env.JIRA_HOST?.replace(/^https?:\/\//, ''),
       username: process.env.JIRA_USERNAME,
       password: process.env.JIRA_API_TOKEN,
       apiVersion: '2',
@@ -53,6 +53,10 @@ class FeedbackCollectionService {
       throw new Error('Session ID is required for ticket creation');
     }
 
+    if (!process.env.JIRA_HOST || !process.env.JIRA_USERNAME || !process.env.JIRA_API_TOKEN || !process.env.JIRA_PROJECT_KEY) {
+      throw new Error('Missing required Jira configuration. Please check your environment variables.');
+    }
+
     const items = await this.dynamoDBService.getFeedbackItems(selectedItems[0].sessionId);
     
     if (!items || items.length === 0) {
@@ -63,18 +67,23 @@ class FeedbackCollectionService {
       const item = items.find((_, index) => index === selected.index);
       if (!item) return null;
 
-      // Create Jira issue
-      const issue = await this.jira.addNewIssue({
-        fields: {
-          project: { key: process.env.JIRA_PROJECT_KEY },
-          summary: selected.title || item.title,
-          description: this._createJiraDescription(item),
-          issuetype: { name: this._mapTypeToJira(item.type) },
-          priority: { name: this._mapPriorityToJira(item.priority) }
-        }
-      });
-
-      return issue;
+      try {
+        // Create Jira issue
+        const issue = await this.jira.addNewIssue({
+          fields: {
+            project: { key: process.env.JIRA_PROJECT_KEY },
+            summary: selected.title || item.title,
+            description: this._createJiraDescription(item),
+            issuetype: { name: this._mapTypeToJira(item.type) },
+            priority: { name: this._mapPriorityToJira(item.priority) }
+          }
+        });
+        console.log(`Created Jira ticket: ${issue.key}`);
+        return issue;
+      } catch (error) {
+        console.error('Error creating Jira ticket:', error);
+        throw new Error(`Failed to create Jira ticket: ${error.message}`);
+      }
     }));
 
     return tickets.filter(t => t);
