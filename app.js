@@ -817,3 +817,71 @@ app.view('collect_feedback_modal', async ({ ack, body, view, client }) => {
     });
   }
 });
+
+// Create the preview modal view
+function createPreviewModal(items) {
+  return {
+    type: 'modal',
+    title: {
+      type: 'plain_text',
+      text: 'Feedback Preview'
+    },
+    blocks: [
+      ...items.map((item, index) => ([
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*${index + 1}. ${item.title}*\n${item.summary}`
+          }
+        },
+        {
+          type: 'section',
+          fields: [
+            {
+              type: 'mrkdwn',
+              text: `*Type:*\n${item.type}`
+            },
+            {
+              type: 'mrkdwn',
+              text: `*Priority:*\n${item.priority}`
+            }
+          ]
+        },
+        {
+          type: 'section',
+          fields: [
+            {
+              type: 'mrkdwn',
+              text: `*User Impact:*\n${item.user_impact}`
+            }
+          ]
+        },
+        {
+          type: 'section',
+          fields: [
+            {
+              type: 'mrkdwn',
+              text: `*Current Behavior:*\n${item.current_behavior || 'N/A'}`
+            },
+            {
+              type: 'mrkdwn',
+              text: `*Expected Behavior:*\n${item.expected_behavior || 'N/A'}`
+            }
+          ]
+        },
+        {
+          type: 'divider'
+        }
+      ])).flat()
+    ],
+    submit: {
+      type: 'plain_text',
+      text: 'Create Jira Tickets'
+    },
+    close: {
+      type: 'plain_text',
+      text: 'Cancel'
+    }
+  };
+}
