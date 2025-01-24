@@ -822,6 +822,7 @@ app.view('collect_feedback_modal', async ({ ack, body, view, client }) => {
 function createPreviewModal(items) {
   return {
     type: 'modal',
+    callback_id: 'preview_feedback_modal',
     title: {
       type: 'plain_text',
       text: 'Feedback Preview'
@@ -833,6 +834,24 @@ function createPreviewModal(items) {
           text: {
             type: 'mrkdwn',
             text: `*${index + 1}. ${item.title}*\n${item.summary}`
+          },
+          accessory: {
+            type: 'checkboxes',
+            action_id: `include_item_${index}`,
+            initial_options: [{
+              text: {
+                type: 'plain_text',
+                text: 'Include'
+              },
+              value: `${index}`
+            }],
+            options: [{
+              text: {
+                type: 'plain_text',
+                text: 'Include'
+              },
+              value: `${index}`
+            }]
           }
         },
         {
@@ -872,6 +891,20 @@ function createPreviewModal(items) {
         },
         {
           type: 'divider'
+        },
+        {
+          type: 'input',
+          block_id: `edit_title_${index}`,
+          optional: true,
+          label: {
+            type: 'plain_text',
+            text: 'Edit Title'
+          },
+          element: {
+            type: 'plain_text_input',
+            action_id: 'title_input',
+            initial_value: item.title
+          }
         }
       ])).flat()
     ],
@@ -885,3 +918,61 @@ function createPreviewModal(items) {
     }
   };
 }
+
+// Handle the preview modal submission
+app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
+  try {
+    await ack();
+    
+    // Get selected items and edited titles
+    const selectedItems = [];
+    const values = view.state.values;
+    
+    Object.keys(values).forEach(blockId => {
+      if (blockId.startsWith('include_item_')) {
+        const index = parseInt(blockId.split('_')[2]);
+        const editTitleBlock = values[`edit_title_${index}`];
+        const isIncluded = values[blockId][`include_item_${index}`].selected_options.length > 0;
+        
+        if (isIncluded) {
+          selectedItems.push({
+            index,
+            title: editTitleBlock.title_input.value
+          });
+        }
+      }
+    });
+    
+    // Open DM channel for status updates
+    const dmChannel = await client.conversations.open({
+      users: body.user.id
+    });
+    
+    // Send processing message
+    const message = await client.chat.postMessage({
+      channel: dmChannel.channel.id,
+      text: "🎫 Creating Jira tickets..."
+    });
+    
+    // Create Jira tickets for selected items
+    const service = new FeedbackCollectionService(null, { slackClient: client });
+    await service.createJiraTickets(selectedItems);
+    
+    // Update with completion message
+    await client.chat.update({
+      channel: dmChannel.channel.id,
+      ts: message.ts,
+      text: "✅ Jira tickets created successfully!"
+    });
+  } catch (error) {
+    console.error('Error creating tickets:', error);
+    // Send error message to user
+    const dmChannel = await client.conversations.open({
+      users: body.user.id
+    });
+    await client.chat.postMessage({
+      channel: dmChannel.channel.id,
+      text: `❌ Error creating tickets: ${error.message}`
+    });
+  }
+});
