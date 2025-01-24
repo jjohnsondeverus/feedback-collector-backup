@@ -45,7 +45,19 @@ class FeedbackCollectionService {
   }
 
   async createJiraTickets(selectedItems) {
+    if (!selectedItems || selectedItems.length === 0) {
+      throw new Error('No items selected for ticket creation');
+    }
+
+    if (!selectedItems[0].sessionId) {
+      throw new Error('Session ID is required for ticket creation');
+    }
+
     const items = await this.dynamoDBService.getFeedbackItems(selectedItems[0].sessionId);
+    
+    if (!items || items.length === 0) {
+      throw new Error('No feedback items found for this session');
+    }
     
     const tickets = await Promise.all(selectedItems.map(async (selected) => {
       const item = items.find((_, index) => index === selected.index);

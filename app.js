@@ -527,7 +527,10 @@ app.action('review_feedback', async ({ ack, body, client }) => {
     
     await client.views.open({
       trigger_id: body.trigger_id,
-      view: createPreviewModal(preview.items)
+      view: {
+        ...createPreviewModal(preview.items),
+        private_metadata: sessionId  // Store sessionId in modal metadata
+      }
     });
   } catch (error) {
     console.error('Error showing preview:', error);
@@ -973,6 +976,7 @@ app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
   try {
     await ack();
     
+    const sessionId = view.private_metadata;  // Get sessionId from modal metadata
     const selectedItems = [];
     const values = view.state.values;
     
@@ -984,7 +988,7 @@ app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
         if (isIncluded) {
           selectedItems.push({
             index,
-            sessionId: body.view.private_metadata,  // Add this to store modal
+            sessionId,  // Use the retrieved sessionId
             title: values[`edit_title_${index}`].title_input.value,
             type: values[`edit_type_${index}`].type_input.selected_option.value,
             priority: values[`edit_priority_${index}`].priority_input.selected_option.value,
@@ -995,6 +999,10 @@ app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
         }
       }
     });
+    
+    if (selectedItems.length === 0) {
+      throw new Error('Please select at least one item to create tickets for');
+    }
     
     // Open DM channel for status updates
     const dmChannel = await client.conversations.open({
