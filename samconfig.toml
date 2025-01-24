@@ -3,9 +3,10 @@ version = 0.1
 [default.deploy]
 [default.deploy.parameters]
 stack_name = "feedback-collector-backup"
-s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-XXXXXXXXXXXX"
-s3_prefix = "feedback-collector"
+s3_prefix = "feedback-collector-backup"
 region = "us-east-1"
 confirm_changeset = true
-capabilities = ["CAPABILITY_IAM"]
-parameter_overrides = "Environment=dev" 
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "Environment=\"dev\" InstanceType=\"t2.micro\" KeyName=\"feedback-collector-backup-key\""
+resolve_s3 = true
+image_repositories = []

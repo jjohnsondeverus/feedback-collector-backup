@@ -18,6 +18,7 @@ Parameters:
       - t2.medium
   KeyName:
     Type: AWS::EC2::KeyPair::KeyName
+    Default: feedback-collector-backup-key
     Description: Name of an existing EC2 KeyPair for SSH access
 
 Resources:
@@ -25,7 +26,7 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: !Ref InstanceType
-      ImageId: ami-0c7217cdde317cfec  # Amazon Linux 2023 in us-east-1
+      ImageId: !Sub '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64}}'
       KeyName: !Ref KeyName
       SecurityGroups: 
         - !Ref FeedbackCollectorSecurityGroup
@@ -33,16 +34,59 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
-          yum update -y
-          yum install -y nodejs npm git
+          
+          # Enable error handling and logging
+          set -e
+          exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
+          
+          # Update and install dependencies
+          dnf update -y
+          dnf install -y curl
+          
+          # Install Node.js 18 (LTS)
+          curl -fsSL https://rpm.nodesource.com/setup_18.x | sudo bash -
+          dnf install -y nodejs
+          
+          # Install git
+          dnf install -y git
+          
+          # Clone and setup app
           cd /home/ec2-user
-          git clone -b aws-migration https://github.com/jjohnsondeverus/feedback-collector-backup.git
+          echo "Cloning repository..."
+          git clone https://github.com/jjohnsondeverus/feedback-collector-backup.git
+          if [ $? -ne 0 ]; then
+            echo "Failed to clone repository"
+            exit 1
+          fi
+          
+          chown -R ec2-user:ec2-user feedback-collector-backup
           cd feedback-collector-backup
-          npm install
+          sudo -u ec2-user npm install
+          
           # Set environment variables
-          echo "NODE_ENV=${Environment}" >> .env
-          echo "DYNAMODB_TABLE=${FeedbackTable}" >> .env
-          npm start
+          sudo -u ec2-user bash -c 'cat > .env << EOL
+          NODE_ENV=${Environment}
+          DYNAMODB_TABLE=${FeedbackTable}
+          AWS_REGION=us-east-1
+          
+          # Fetch secrets from Parameter Store
+          SLACK_BOT_TOKEN=$(aws ssm get-parameter --name "/feedback-collector/${Environment}/SLACK_BOT_TOKEN" --with-decryption --query Parameter.Value --output text)
+          SLACK_APP_TOKEN=$(aws ssm get-parameter --name "/feedback-collector/${Environment}/SLACK_APP_TOKEN" --with-decryption --query Parameter.Value --output text)
+          SLACK_SIGNING_SECRET=$(aws ssm get-parameter --name "/feedback-collector/${Environment}/SLACK_SIGNING_SECRET" --with-decryption --query Parameter.Value --output text)
+          
+          JIRA_HOST=$(aws ssm get-parameter --name "/feedback-collector/${Environment}/JIRA_HOST" --with-decryption --query Parameter.Value --output text)
+          JIRA_USERNAME=$(aws ssm get-parameter --name "/feedback-collector/${Environment}/JIRA_USERNAME" --with-decryption --query Parameter.Value --output text)
+          JIRA_API_TOKEN=$(aws ssm get-parameter --name "/feedback-collector/${Environment}/JIRA_API_TOKEN" --with-decryption --query Parameter.Value --output text)
+          
+          OPENAI_API_KEY=$(aws ssm get-parameter --name "/feedback-collector/${Environment}/OPENAI_API_KEY" --with-decryption --query Parameter.Value --output text)
+          OPENAI_MODEL=$(aws ssm get-parameter --name "/feedback-collector/${Environment}/OPENAI_MODEL" --with-decryption --query Parameter.Value --output text)
+          EOL'
+          
+          # Install and setup PM2
+          sudo npm install -g pm2
+          sudo -u ec2-user bash -c 'cd /home/ec2-user/feedback-collector-backup && pm2 start app.js'
+          sudo -u ec2-user pm2 save
+          sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u ec2-user --hp /home/ec2-user
 
   FeedbackCollectorSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -71,6 +115,7 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
         - arn:aws:iam::aws:policy/CloudWatchFullAccess
+        - arn:aws:iam::aws:policy/AmazonSSMReadOnlyAccess
 
   FeedbackCollectorInstanceProfile:
     Type: AWS::IAM::InstanceProfile
