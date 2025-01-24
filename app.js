@@ -767,9 +767,14 @@ app.view('collect_feedback_modal', async ({ ack, body, view, client }) => {
 
     await ack();
     
+    // Open DM channel first
+    const dmChannel = await client.conversations.open({
+      users: body.user.id
+    });
+    
     // Send status updates to the user directly
     const message = await client.chat.postMessage({
-      channel: body.user.id,  // Send to user's DM
+      channel: dmChannel.channel.id,  // Use the DM channel ID
       text: "🔍 Starting feedback collection process..."
     });
 
@@ -783,7 +788,7 @@ app.view('collect_feedback_modal', async ({ ack, body, view, client }) => {
 
     await handleFeedbackCollection(
       client, 
-      body.user.id,  // User's DM
+      dmChannel.channel.id,  // Use the DM channel ID
       message.ts,
       start,
       end,
@@ -792,6 +797,18 @@ app.view('collect_feedback_modal', async ({ ack, body, view, client }) => {
     );
   } catch (error) {
     console.error('Error:', error);
+    try {
+      // Try to send error message to user's DM
+      const dmChannel = await client.conversations.open({
+        users: body.user.id
+      });
+      await client.chat.postMessage({
+        channel: dmChannel.channel.id,
+        text: `❌ Error: ${error.message}\nPlease try again.`
+      });
+    } catch (dmError) {
+      console.error('Error sending DM:', dmError);
+    }
     await ack({
       response_action: "errors",
       errors: {
