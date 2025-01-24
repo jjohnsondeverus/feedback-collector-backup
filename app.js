@@ -989,61 +989,57 @@ app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
     
     console.log('Modal values:', JSON.stringify(values, null, 2));
     
-    Object.keys(values).forEach(blockId => {
-      const match = blockId.match(/^[^_]+_item_(\d+)$/);
-      if (match) {
-        const index = parseInt(match[1]);
-        // Get the checkbox state
-        const actionId = Object.keys(values[blockId])[0];
-        const checkboxValue = values[blockId][actionId];
-        const isIncluded = checkboxValue && checkboxValue.selected_options && checkboxValue.selected_options.length > 0;
-        
-        console.log(`Checking item ${index}:`, { blockId, actionId, isIncluded });
-        
-        if (isIncluded) {
-          // Get the edited values for this item
-          const titleBlock = values[`edit_title_${index}`]?.title_input?.value;
-          const typeBlock = values[`edit_type_${index}`]?.type_input?.selected_option?.value;
-          const priorityBlock = values[`edit_priority_${index}`]?.priority_input?.selected_option?.value;
-          const impactBlock = values[`edit_impact_${index}`]?.impact_input?.value;
-          const currentBlock = values[`edit_current_${index}`]?.current_input?.value;
-          const expectedBlock = values[`edit_expected_${index}`]?.expected_input?.value;
-          
-          console.log(`Item ${index} values:`, {
-            title: titleBlock,
-            type: typeBlock,
-            priority: priorityBlock
-          });
-          
-          // Only add if we have the required fields
-          if (titleBlock && typeBlock && priorityBlock) {
-            selectedItems.push({
-              index,
-              sessionId,
-              title: titleBlock,
-              type: typeBlock,
-              priority: priorityBlock,
-              user_impact: impactBlock || '',
-              current_behavior: currentBlock || '',
-              expected_behavior: expectedBlock || ''
-            });
-          }
+    // First, find all selected items
+    const selectedIndices = new Set();
+    Object.entries(values).forEach(([blockId, blockValue]) => {
+      // Check if this block contains checkbox selections
+      const checkboxes = Object.values(blockValue)[0];
+      if (checkboxes?.type === 'checkboxes' && checkboxes.selected_options?.length > 0) {
+        // Extract the index from the selected option value
+        const index = parseInt(checkboxes.selected_options[0].value);
+        if (!isNaN(index)) {
+          selectedIndices.add(index);
         }
       }
     });
     
-    if (selectedItems.length === 0) {
-      // Check if any items were selected but failed validation
-      const hasSelectedItems = Object.keys(values).some(blockId => {
-        const match = blockId.match(/^[^_]+_item_(\d+)$/);
-        if (match) {
-          const actionId = Object.keys(values[blockId])[0];
-          return values[blockId][actionId].selected_options?.length > 0;
-        }
-        return false;
+    console.log('Selected indices:', Array.from(selectedIndices));
+    
+    // Then process the selected items
+    selectedIndices.forEach(index => {
+      // Get the edited values for this item
+      const titleBlock = values[`edit_title_${index}`]?.title_input?.value;
+      const typeBlock = values[`edit_type_${index}`]?.type_input?.selected_option?.value;
+      const priorityBlock = values[`edit_priority_${index}`]?.priority_input?.selected_option?.value;
+      const impactBlock = values[`edit_impact_${index}`]?.impact_input?.value;
+      const currentBlock = values[`edit_current_${index}`]?.current_input?.value;
+      const expectedBlock = values[`edit_expected_${index}`]?.expected_input?.value;
+      
+      console.log(`Processing item ${index}:`, {
+        title: titleBlock,
+        type: typeBlock,
+        priority: priorityBlock
       });
-
-      if (hasSelectedItems) {
+      
+      // Only add if we have the required fields
+      if (titleBlock && typeBlock && priorityBlock) {
+        selectedItems.push({
+          index,
+          sessionId,
+          title: titleBlock,
+          type: typeBlock,
+          priority: priorityBlock,
+          user_impact: impactBlock || '',
+          current_behavior: currentBlock || '',
+          expected_behavior: expectedBlock || ''
+        });
+      } else {
+        console.log(`Missing required fields for item ${index}`);
+      }
+    });
+    
+    if (selectedItems.length === 0) {
+      if (selectedIndices.size > 0) {
         throw new Error('Please ensure all required fields (Title, Type, Priority) are filled for selected items');
       } else {
         throw new Error('Please select at least one item to create tickets for');
