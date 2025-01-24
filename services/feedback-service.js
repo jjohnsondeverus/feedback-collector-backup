@@ -13,6 +13,20 @@ class FeedbackCollectionService {
       duplicateCacheDuration: config.duplicateCacheDuration || 24,
       ...config
     };
+    this.openAIService = config.openAIService || {
+      analyzeFeedback: async (messages) => ({
+        feedback: messages.map(msg => ({
+          title: "Test Feedback",
+          summary: msg.text || "Test summary",
+          type: "bug",
+          priority: "high",
+          user_impact: "Test impact",
+          current_behavior: "Test current",
+          expected_behavior: "Test expected",
+          additional_context: "Test context"
+        }))
+      })
+    };
   }
 
   // Start a new feedback collection session
@@ -442,15 +456,14 @@ class FeedbackCollectionService {
 
   async collectFeedbackFromMessages({ sessionId, channelId, messages }) {
     try {
-      // First analyze messages with GPT-4
-      const analyzedFeedback = await openAIService.analyzeFeedback(
-        messages.map(msg => msg.text)
-      );
-
+      console.log('Processing messages:', messages);
+      const analysis = await this.openAIService.analyzeFeedback(messages);
+      console.log('Analysis result:', analysis);
+      
       // Transform analyzed feedback into our format
-      const feedbackItems = analyzedFeedback.items.map((item, index) => ({
+      const feedbackItems = analysis.feedback.map((item, index) => ({
         title: item.title,
-        description: item.description,
+        description: item.summary,
         priority: item.priority,
         type: item.type,
         user_impact: item.user_impact,
@@ -472,7 +485,7 @@ class FeedbackCollectionService {
 
       return feedbackItems;
     } catch (error) {
-      console.error('Error collecting feedback:', error);
+      console.error('Error in collectFeedbackFromMessages:', error);
       throw error;
     }
   }

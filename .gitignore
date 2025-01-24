@@ -23,9 +23,8 @@ Thumbs.db
 
 # Project specific
 migration-guide.md
-## SpecStory.md
-.specstory/
-SpecStory.md
+*SpecStory.md
+.specstory
 
 # AWS
 .aws/
@@ -54,4 +53,5 @@ debug.log*
 # Docker
 docker-compose.override.yml
 
-## SpecStory.md
+# New additions
+!.env.example

@@ -39,28 +39,35 @@ Resources:
           set -e
           exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
           
+          echo "Starting UserData script execution..."
+          
           # Update and install dependencies
+          echo "Updating system packages..."
           dnf update -y
-          dnf install -y curl
           
           # Install Node.js 18 (LTS)
-          curl -fsSL https://rpm.nodesource.com/setup_18.x | sudo bash -
+          echo "Installing Node.js..."
+          wget -qO- https://rpm.nodesource.com/setup_18.x | sudo bash -
           dnf install -y nodejs
           
           # Install git
+          echo "Installing git..."
           dnf install -y git
           
           # Clone and setup app
+          echo "Setting up application..."
           cd /home/ec2-user
-          echo "Cloning repository..."
-          git clone https://github.com/jjohnsondeverus/feedback-collector-backup.git
-          if [ $? -ne 0 ]; then
+          echo "Cloning repository from https://github.com/jjohnsondeverus/feedback-collector-backup.git"
+          git clone https://github.com/jjohnsondeverus/feedback-collector-backup.git || {
             echo "Failed to clone repository"
+            cat /var/log/cloud-init-output.log
             exit 1
-          fi
+          }
           
+          echo "Setting permissions..."
           chown -R ec2-user:ec2-user feedback-collector-backup
-          cd feedback-collector-backup
+          cd feedback-collector-backup || exit 1
+          echo "Installing npm dependencies..."
           sudo -u ec2-user npm install
           
           # Set environment variables
@@ -80,6 +87,7 @@ Resources:
           
           OPENAI_API_KEY=$(aws ssm get-parameter --name "/feedback-collector/${Environment}/OPENAI_API_KEY" --with-decryption --query Parameter.Value --output text)
           OPENAI_MODEL=$(aws ssm get-parameter --name "/feedback-collector/${Environment}/OPENAI_MODEL" --with-decryption --query Parameter.Value --output text)
+          PREVIEW_TIMEOUT=2500  # Set timeout for preview generation
           EOL'
           
           # Install and setup PM2
