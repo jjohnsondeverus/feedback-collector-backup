@@ -1,13 +1,12 @@
 const { DynamoDBService } = require('./dynamodb-service');
 const { OpenAIService } = require('./openai-service');
-const { JiraApi } = require('./jira-api');
 
 class FeedbackCollectionService {
   constructor(config = {}, services = {}) {
     this.dynamoDBService = services.dynamoDBService || new DynamoDBService();
     this.openAIService = services.openAIService || new OpenAIService();
     this.slackClient = services.slackClient;
-    this.jira = new JiraApi({
+    this.jira = new (require('jira-client'))({
       protocol: 'https',
       host: process.env.JIRA_HOST,
       username: process.env.JIRA_USERNAME,
@@ -57,9 +56,9 @@ class FeedbackCollectionService {
         fields: {
           project: { key: process.env.JIRA_PROJECT_KEY },
           summary: selected.title || item.title,
-          description: this.createJiraDescription(item),
-          issuetype: { name: this.mapTypeToJira(item.type) },
-          priority: { name: this.mapPriorityToJira(item.priority) }
+          description: this._createJiraDescription(item),
+          issuetype: { name: this._mapTypeToJira(item.type) },
+          priority: { name: this._mapPriorityToJira(item.priority) }
         }
       });
 
@@ -69,7 +68,7 @@ class FeedbackCollectionService {
     return tickets.filter(t => t);
   }
 
-  private mapTypeToJira(type) {
+  _mapTypeToJira(type) {
     const typeMap = {
       bug: 'Bug',
       feature: 'New Feature',
@@ -78,7 +77,7 @@ class FeedbackCollectionService {
     return typeMap[type.toLowerCase()] || 'Task';
   }
 
-  private mapPriorityToJira(priority) {
+  _mapPriorityToJira(priority) {
     const priorityMap = {
       high: 'High',
       medium: 'Medium',
@@ -87,7 +86,7 @@ class FeedbackCollectionService {
     return priorityMap[priority.toLowerCase()] || 'Medium';
   }
 
-  private createJiraDescription(item) {
+  _createJiraDescription(item) {
     return `
 h2. User Impact
 ${item.user_impact}
