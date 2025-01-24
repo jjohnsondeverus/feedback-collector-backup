@@ -833,78 +833,108 @@ function createPreviewModal(items) {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*${index + 1}. ${item.title}*\n${item.summary}`
+            text: `*${index + 1}. ${item.title}*`
           },
           accessory: {
             type: 'checkboxes',
             action_id: `include_item_${index}`,
             initial_options: [{
-              text: {
-                type: 'plain_text',
-                text: 'Include'
-              },
+              text: { type: 'plain_text', text: 'Include' },
               value: `${index}`
             }],
             options: [{
-              text: {
-                type: 'plain_text',
-                text: 'Include'
-              },
+              text: { type: 'plain_text', text: 'Include' },
               value: `${index}`
             }]
           }
         },
         {
-          type: 'section',
-          fields: [
-            {
-              type: 'mrkdwn',
-              text: `*Type:*\n${item.type}`
-            },
-            {
-              type: 'mrkdwn',
-              text: `*Priority:*\n${item.priority}`
-            }
-          ]
-        },
-        {
-          type: 'section',
-          fields: [
-            {
-              type: 'mrkdwn',
-              text: `*User Impact:*\n${item.user_impact}`
-            }
-          ]
-        },
-        {
-          type: 'section',
-          fields: [
-            {
-              type: 'mrkdwn',
-              text: `*Current Behavior:*\n${item.current_behavior || 'N/A'}`
-            },
-            {
-              type: 'mrkdwn',
-              text: `*Expected Behavior:*\n${item.expected_behavior || 'N/A'}`
-            }
-          ]
-        },
-        {
-          type: 'divider'
-        },
-        {
           type: 'input',
           block_id: `edit_title_${index}`,
           optional: true,
-          label: {
-            type: 'plain_text',
-            text: 'Edit Title'
-          },
+          label: { type: 'plain_text', text: 'Title' },
           element: {
             type: 'plain_text_input',
             action_id: 'title_input',
             initial_value: item.title
           }
+        },
+        {
+          type: 'input',
+          block_id: `edit_type_${index}`,
+          optional: true,
+          label: { type: 'plain_text', text: 'Type' },
+          element: {
+            type: 'static_select',
+            action_id: 'type_input',
+            initial_option: {
+              text: { type: 'plain_text', text: item.type },
+              value: item.type
+            },
+            options: [
+              { text: { type: 'plain_text', text: 'Bug' }, value: 'bug' },
+              { text: { type: 'plain_text', text: 'Feature' }, value: 'feature' },
+              { text: { type: 'plain_text', text: 'Improvement' }, value: 'improvement' }
+            ]
+          }
+        },
+        {
+          type: 'input',
+          block_id: `edit_priority_${index}`,
+          optional: true,
+          label: { type: 'plain_text', text: 'Priority' },
+          element: {
+            type: 'static_select',
+            action_id: 'priority_input',
+            initial_option: {
+              text: { type: 'plain_text', text: item.priority },
+              value: item.priority
+            },
+            options: [
+              { text: { type: 'plain_text', text: 'High' }, value: 'high' },
+              { text: { type: 'plain_text', text: 'Medium' }, value: 'medium' },
+              { text: { type: 'plain_text', text: 'Low' }, value: 'low' }
+            ]
+          }
+        },
+        {
+          type: 'input',
+          block_id: `edit_impact_${index}`,
+          optional: true,
+          label: { type: 'plain_text', text: 'User Impact' },
+          element: {
+            type: 'plain_text_input',
+            action_id: 'impact_input',
+            initial_value: item.user_impact,
+            multiline: true
+          }
+        },
+        {
+          type: 'input',
+          block_id: `edit_current_${index}`,
+          optional: true,
+          label: { type: 'plain_text', text: 'Current Behavior' },
+          element: {
+            type: 'plain_text_input',
+            action_id: 'current_input',
+            initial_value: item.current_behavior || '',
+            multiline: true
+          }
+        },
+        {
+          type: 'input',
+          block_id: `edit_expected_${index}`,
+          optional: true,
+          label: { type: 'plain_text', text: 'Expected Behavior' },
+          element: {
+            type: 'plain_text_input',
+            action_id: 'expected_input',
+            initial_value: item.expected_behavior || '',
+            multiline: true
+          }
+        },
+        {
+          type: 'divider'
         }
       ])).flat()
     ],
@@ -924,20 +954,24 @@ app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
   try {
     await ack();
     
-    // Get selected items and edited titles
     const selectedItems = [];
     const values = view.state.values;
     
     Object.keys(values).forEach(blockId => {
       if (blockId.startsWith('include_item_')) {
         const index = parseInt(blockId.split('_')[2]);
-        const editTitleBlock = values[`edit_title_${index}`];
         const isIncluded = values[blockId][`include_item_${index}`].selected_options.length > 0;
         
         if (isIncluded) {
           selectedItems.push({
             index,
-            title: editTitleBlock.title_input.value
+            sessionId: body.view.private_metadata,  // Add this to store modal
+            title: values[`edit_title_${index}`].title_input.value,
+            type: values[`edit_type_${index}`].type_input.selected_option.value,
+            priority: values[`edit_priority_${index}`].priority_input.selected_option.value,
+            user_impact: values[`edit_impact_${index}`].impact_input.value,
+            current_behavior: values[`edit_current_${index}`].current_input.value,
+            expected_behavior: values[`edit_expected_${index}`].expected_input.value
           });
         }
       }
