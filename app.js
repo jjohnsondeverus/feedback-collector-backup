@@ -987,14 +987,18 @@ app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
     const selectedItems = [];
     const values = view.state.values;
     
-    console.log('Modal values:', JSON.stringify(values, null, 2)); // Debug logging
+    console.log('Modal values:', JSON.stringify(values, null, 2));
     
     Object.keys(values).forEach(blockId => {
-      if (blockId.startsWith('include_item_')) {
-        const index = parseInt(blockId.split('_')[2]);
+      const match = blockId.match(/^[^_]+_item_(\d+)$/);
+      if (match) {
+        const index = parseInt(match[1]);
         // Get the checkbox state
-        const checkboxValue = values[blockId][`include_item_${index}`];
+        const actionId = Object.keys(values[blockId])[0];
+        const checkboxValue = values[blockId][actionId];
         const isIncluded = checkboxValue && checkboxValue.selected_options && checkboxValue.selected_options.length > 0;
+        
+        console.log(`Checking item ${index}:`, { blockId, actionId, isIncluded });
         
         if (isIncluded) {
           // Get the edited values for this item
@@ -1004,6 +1008,12 @@ app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
           const impactBlock = values[`edit_impact_${index}`]?.impact_input?.value;
           const currentBlock = values[`edit_current_${index}`]?.current_input?.value;
           const expectedBlock = values[`edit_expected_${index}`]?.expected_input?.value;
+          
+          console.log(`Item ${index} values:`, {
+            title: titleBlock,
+            type: typeBlock,
+            priority: priorityBlock
+          });
           
           // Only add if we have the required fields
           if (titleBlock && typeBlock && priorityBlock) {
@@ -1023,10 +1033,24 @@ app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
     });
     
     if (selectedItems.length === 0) {
-      throw new Error('Please select at least one item and ensure all required fields (Title, Type, Priority) are filled');
+      // Check if any items were selected but failed validation
+      const hasSelectedItems = Object.keys(values).some(blockId => {
+        const match = blockId.match(/^[^_]+_item_(\d+)$/);
+        if (match) {
+          const actionId = Object.keys(values[blockId])[0];
+          return values[blockId][actionId].selected_options?.length > 0;
+        }
+        return false;
+      });
+
+      if (hasSelectedItems) {
+        throw new Error('Please ensure all required fields (Title, Type, Priority) are filled for selected items');
+      } else {
+        throw new Error('Please select at least one item to create tickets for');
+      }
     }
     
-    console.log('Selected items:', JSON.stringify(selectedItems, null, 2)); // Debug logging
+    console.log('Selected items:', JSON.stringify(selectedItems, null, 2));
     
     // Open DM channel for status updates
     const dmChannel = await client.conversations.open({
