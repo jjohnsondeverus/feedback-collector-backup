@@ -589,6 +589,70 @@ app.command('/collect-feedback', async ({ ack, body, client }) => {
   }
 });
 
+// Handle the Create Tickets button click
+app.action('create_tickets', async ({ ack, body, client }) => {
+  try {
+    await ack();
+    
+    // Show the date/channel picker modal
+    await client.views.push({
+      trigger_id: body.trigger_id,
+      view: {
+        type: 'modal',
+        callback_id: 'collect_feedback_modal',
+        title: {
+          type: 'plain_text',
+          text: 'Select Channel & Dates'
+        },
+        blocks: [
+          {
+            type: 'input',
+            block_id: 'channels',
+            label: {
+              type: 'plain_text',
+              text: 'Select Channel'
+            },
+            element: {
+              type: 'channels_select',
+              action_id: 'channel_select'
+            }
+          },
+          {
+            type: 'input',
+            block_id: 'startDate',
+            label: {
+              type: 'plain_text',
+              text: 'Start Date'
+            },
+            element: {
+              type: 'datepicker',
+              action_id: 'datepicker'
+            }
+          },
+          {
+            type: 'input',
+            block_id: 'endDate',
+            label: {
+              type: 'plain_text',
+              text: 'End Date'
+            },
+            element: {
+              type: 'datepicker',
+              action_id: 'datepicker'
+            }
+          }
+        ],
+        submit: {
+          type: 'plain_text',
+          text: 'Collect'
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error showing date picker:', error);
+  }
+});
+
 // Start the app
 (async () => {
   await app.start(process.env.PORT || 3000);
