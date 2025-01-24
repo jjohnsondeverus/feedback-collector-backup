@@ -8,6 +8,7 @@ const { App } = require('@slack/bolt');
 const { WebClient } = require('@slack/web-api');
 const JiraApi = require('jira-client');
 const OpenAI = require('openai');
+const { FeedbackCollectionService } = require('./services/feedback-collection-service');
 
 // Temporary storage for feedback data
 const feedbackStorage = new Map();
@@ -761,40 +762,46 @@ async function handleFeedbackCollection(client, channelId, messageTs, startDate,
 
 app.view('collect_feedback_modal', async ({ ack, body, view, client }) => {
   try {
-    await ack();
-    
+    // Get values from the modal
     const { channels, startDate, endDate } = view.state.values;
     const channelId = channels.channel_select.selected_channel;
+    const start = startDate.datepicker.selected_date;
+    const end = endDate.datepicker.selected_date;
+
+    // Acknowledge the view submission first
+    await ack();
     
-    // 1. Post initial message that we'll update
+    // Post initial message that we'll update
     const message = await client.chat.postMessage({
       channel: channelId,
       text: "🔍 Starting feedback collection process..."
     });
     
-    // 2. Start a feedback collection session
+    // Start a feedback collection session
     const service = new FeedbackCollectionService(null, { slackClient: client });
     const session = await service.startSession({
       userId: body.user.id,
       channels: [channelId],
-      startDate: startDate.datepicker.selected_date,
-      endDate: endDate.datepicker.selected_date
+      startDate: start,
+      endDate: end
     });
 
-    // 3. Process feedback in background with progress updates
+    // Process feedback in background with progress updates
     await handleFeedbackCollection(
       client, 
       channelId,
       message.ts,
-      startDate.datepicker.selected_date,
-      endDate.datepicker.selected_date,
+      start,
+      end,
       session.sessionId
     );
   } catch (error) {
     console.error('Error:', error);
-    await client.chat.postMessage({
-      channel: channelId,
-      text: `❌ Error: ${error.message}\nPlease try again with a smaller date range.`
+    await ack({
+      response_action: "errors",
+      errors: {
+        channels: "Error starting collection: " + error.message
+      }
     });
   }
 });
