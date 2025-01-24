@@ -8,21 +8,47 @@ class OpenAIService {
   }
 
   async analyzeFeedback(messages) {
-    const response = await this.openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || "gpt-4",
-      messages: [
-        {
-          role: "system",
-          content: "You are a helpful assistant that analyzes conversation messages and extracts structured feedback items."
-        },
-        {
-          role: "user",
-          content: JSON.stringify(messages)
-        }
-      ]
-    });
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: process.env.OPENAI_MODEL || "gpt-4",
+        messages: [
+          {
+            role: "system",
+            content: `You are a product feedback analyzer. Extract feedback items from conversations.
+              Format each item as:
+              {
+                "title": "Brief descriptive title",
+                "summary": "Detailed explanation",
+                "type": "bug|improvement|feature",
+                "priority": "high|medium|low",
+                "user_impact": "How this affects users",
+                "current_behavior": "What currently happens",
+                "expected_behavior": "What should happen",
+                "additional_context": "Other relevant details"
+              }
+              Return a JSON object with a 'feedback' array containing these items.`
+          },
+          {
+            role: "user",
+            content: JSON.stringify(messages)
+          }
+        ],
+        temperature: 0.1,
+        response_format: { type: "json_object" }
+      });
 
-    return JSON.parse(response.choices[0].message.content);
+      const result = JSON.parse(response.choices[0].message.content);
+      if (!result.feedback || !Array.isArray(result.feedback)) {
+        throw new Error('Invalid response format from OpenAI');
+      }
+      return result;
+    } catch (error) {
+      console.error('Error analyzing feedback:', error);
+      if (error.message.includes('JSON')) {
+        throw new Error('Failed to process feedback. Please try again.');
+      }
+      throw error;
+    }
   }
 }
 
