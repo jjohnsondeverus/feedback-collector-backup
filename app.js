@@ -844,7 +844,18 @@ function createPreviewModal(items) {
       type: 'plain_text',
       text: 'Feedback Preview'
     },
+    notify_on_close: true,
     blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: '*Instructions:*\n• Check the boxes for items you want to create tickets for\n• Edit fields as needed\n• Title, Type, and Priority are required'
+        }
+      },
+      {
+        type: 'divider'
+      },
       ...items.map((item, index) => {
         const type = normalizeType(item.type);
         const priority = normalizePriority(item.priority);
@@ -859,10 +870,6 @@ function createPreviewModal(items) {
             accessory: {
               type: 'checkboxes',
               action_id: `include_item_${index}`,
-              initial_options: [{
-                text: { type: 'plain_text', text: 'Include' },
-                value: `${index}`
-              }],
               options: [{
                 text: { type: 'plain_text', text: 'Include' },
                 value: `${index}`
@@ -976,33 +983,50 @@ app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
   try {
     await ack();
     
-    const sessionId = view.private_metadata;  // Get sessionId from modal metadata
+    const sessionId = view.private_metadata;
     const selectedItems = [];
     const values = view.state.values;
+    
+    console.log('Modal values:', JSON.stringify(values, null, 2)); // Debug logging
     
     Object.keys(values).forEach(blockId => {
       if (blockId.startsWith('include_item_')) {
         const index = parseInt(blockId.split('_')[2]);
-        const isIncluded = values[blockId][`include_item_${index}`].selected_options.length > 0;
+        // Get the checkbox state
+        const checkboxValue = values[blockId][`include_item_${index}`];
+        const isIncluded = checkboxValue && checkboxValue.selected_options && checkboxValue.selected_options.length > 0;
         
         if (isIncluded) {
-          selectedItems.push({
-            index,
-            sessionId,  // Use the retrieved sessionId
-            title: values[`edit_title_${index}`].title_input.value,
-            type: values[`edit_type_${index}`].type_input.selected_option.value,
-            priority: values[`edit_priority_${index}`].priority_input.selected_option.value,
-            user_impact: values[`edit_impact_${index}`].impact_input.value,
-            current_behavior: values[`edit_current_${index}`].current_input.value,
-            expected_behavior: values[`edit_expected_${index}`].expected_input.value
-          });
+          // Get the edited values for this item
+          const titleBlock = values[`edit_title_${index}`]?.title_input?.value;
+          const typeBlock = values[`edit_type_${index}`]?.type_input?.selected_option?.value;
+          const priorityBlock = values[`edit_priority_${index}`]?.priority_input?.selected_option?.value;
+          const impactBlock = values[`edit_impact_${index}`]?.impact_input?.value;
+          const currentBlock = values[`edit_current_${index}`]?.current_input?.value;
+          const expectedBlock = values[`edit_expected_${index}`]?.expected_input?.value;
+          
+          // Only add if we have the required fields
+          if (titleBlock && typeBlock && priorityBlock) {
+            selectedItems.push({
+              index,
+              sessionId,
+              title: titleBlock,
+              type: typeBlock,
+              priority: priorityBlock,
+              user_impact: impactBlock || '',
+              current_behavior: currentBlock || '',
+              expected_behavior: expectedBlock || ''
+            });
+          }
         }
       }
     });
     
     if (selectedItems.length === 0) {
-      throw new Error('Please select at least one item to create tickets for');
+      throw new Error('Please select at least one item and ensure all required fields (Title, Type, Priority) are filled');
     }
+    
+    console.log('Selected items:', JSON.stringify(selectedItems, null, 2)); // Debug logging
     
     // Open DM channel for status updates
     const dmChannel = await client.conversations.open({
