@@ -660,19 +660,19 @@ app.action('create_tickets', async ({ ack, body, client }) => {
   console.log('⚡️ Bolt app is running!');
 })();
 
-async function handleFeedbackCollection(client, channelId, messageTs, startDate, endDate, sessionId) {
+async function handleFeedbackCollection(client, userId, messageTs, startDate, endDate, sessionId, targetChannel) {
   try {
     try {
-      // Update progress message
+      // Update progress message in user's DM
       await client.chat.update({
-        channel: channelId,
+        channel: userId,
         ts: messageTs,
         text: "📥 Fetching messages...\n0% complete"
       });
 
-      const messages = await getMessagesInDateRange(client, channelId, startDate, endDate);
+      const messages = await getMessagesInDateRange(client, targetChannel, startDate, endDate);
 
-      // 3. Process messages in batches with progress updates
+      // Process messages in batches with progress updates
       const totalMessages = messages.length;
       const batchSize = 50;
       const batches = Math.ceil(totalMessages / batchSize);
@@ -683,31 +683,30 @@ async function handleFeedbackCollection(client, channelId, messageTs, startDate,
         const batch = messages.slice(start, end);
         
         await client.chat.update({
-          channel: channelId,
+          channel: userId,
           ts: messageTs,
           text: `🤖 Analyzing conversation...\n${Math.round((i + 1) / batches * 100)}% complete\n` +
                 `Processed ${end} of ${totalMessages} messages`
         });
 
-        // Process batch
         const service = new FeedbackCollectionService(null, { slackClient: client });
         await service.collectFeedbackFromMessages({
           sessionId,
-          channelId,
+          channelId: targetChannel,
           messages: batch
         });
       }
 
-      // 4. Show completion message with review button
+      // Show completion message with review button
       await client.chat.update({
-        channel: channelId,
+        channel: userId,
         ts: messageTs,
         blocks: [
           {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: "✅ Generated feedback items from conversation. Click below to review:"
+              text: `✅ Generated feedback items from <#${targetChannel}>. Click below to review:`
             }
           },
           {
@@ -745,16 +744,15 @@ async function handleFeedbackCollection(client, channelId, messageTs, startDate,
       }
 
       await client.chat.update({
-        channel: channelId,
+        channel: userId,
         ts: messageTs,
         text: `❌ ${errorMessage}\nError: ${error.message}\n\nTry:\n${suggestion}`
       });
     }
   } catch (error) {
     console.error('Error updating progress:', error);
-    // Fallback error message if we can't update progress
     await client.chat.postMessage({
-      channel: channelId,
+      channel: userId,
       text: "❌ Error processing feedback. Please try again."
     });
   }
@@ -762,22 +760,19 @@ async function handleFeedbackCollection(client, channelId, messageTs, startDate,
 
 app.view('collect_feedback_modal', async ({ ack, body, view, client }) => {
   try {
-    // Get values from the modal
     const { channels, startDate, endDate } = view.state.values;
     const channelId = channels.channel_select.selected_channel;
     const start = startDate.datepicker.selected_date;
     const end = endDate.datepicker.selected_date;
 
-    // Acknowledge the view submission first
     await ack();
     
-    // Post initial message that we'll update
+    // Send status updates to the user directly
     const message = await client.chat.postMessage({
-      channel: channelId,
+      channel: body.user.id,  // Send to user's DM
       text: "🔍 Starting feedback collection process..."
     });
-    
-    // Start a feedback collection session
+
     const service = new FeedbackCollectionService(null, { slackClient: client });
     const session = await service.startSession({
       userId: body.user.id,
@@ -786,14 +781,14 @@ app.view('collect_feedback_modal', async ({ ack, body, view, client }) => {
       endDate: end
     });
 
-    // Process feedback in background with progress updates
     await handleFeedbackCollection(
       client, 
-      channelId,
+      body.user.id,  // User's DM
       message.ts,
       start,
       end,
-      session.sessionId
+      session.sessionId,
+      channelId  // Pass target channel as extra param
     );
   } catch (error) {
     console.error('Error:', error);
