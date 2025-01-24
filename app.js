@@ -533,6 +533,62 @@ app.action('review_feedback', async ({ ack, body, client }) => {
   }
 });
 
+// Handle the slash command
+app.command('/collect-feedback', async ({ ack, body, client }) => {
+  try {
+    await ack();
+    
+    // Show the mode selection modal
+    await client.views.open({
+      trigger_id: body.trigger_id,
+      view: {
+        type: 'modal',
+        callback_id: 'feedback_mode_select',
+        title: {
+          type: 'plain_text',
+          text: 'Feedback Collection'
+        },
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: 'Choose how you\'d like to process the feedback:'
+            }
+          },
+          {
+            type: 'actions',
+            elements: [
+              {
+                type: 'button',
+                text: {
+                  type: 'plain_text',
+                  text: 'Create Jira Tickets'
+                },
+                action_id: 'create_tickets'
+              },
+              {
+                type: 'button',
+                text: {
+                  type: 'plain_text',
+                  text: 'Generate Summary'
+                },
+                action_id: 'generate_summary'
+              }
+            ]
+          }
+        ]
+      }
+    });
+  } catch (error) {
+    console.error('Error:', error);
+    await client.chat.postMessage({
+      channel: body.channel_id,
+      text: `❌ Error: ${error.message}`
+    });
+  }
+});
+
 // Start the app
 (async () => {
   await app.start(process.env.PORT || 3000);
