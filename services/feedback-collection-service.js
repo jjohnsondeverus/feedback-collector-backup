@@ -44,7 +44,7 @@ class FeedbackCollectionService {
     return { items };
   }
 
-  async createJiraTickets(selectedItems) {
+  async createJiraTickets(selectedItems, projectKey) {
     if (!selectedItems || selectedItems.length === 0) {
       throw new Error('No items selected for ticket creation');
     }
@@ -53,8 +53,12 @@ class FeedbackCollectionService {
       throw new Error('Session ID is required for ticket creation');
     }
 
-    if (!process.env.JIRA_HOST || !process.env.JIRA_USERNAME || !process.env.JIRA_API_TOKEN || !process.env.JIRA_PROJECT_KEY) {
+    if (!process.env.JIRA_HOST || !process.env.JIRA_USERNAME || !process.env.JIRA_API_TOKEN) {
       throw new Error('Missing required Jira configuration. Please check your environment variables.');
+    }
+
+    if (!projectKey) {
+      throw new Error('Jira Project Key is required');
     }
 
     const items = await this.dynamoDBService.getFeedbackItems(selectedItems[0].sessionId);
@@ -71,7 +75,7 @@ class FeedbackCollectionService {
         // Create Jira issue
         const issue = await this.jira.addNewIssue({
           fields: {
-            project: { key: process.env.JIRA_PROJECT_KEY },
+            project: { key: projectKey },
             summary: selected.title || item.title,
             description: this._createJiraDescription(item),
             issuetype: { name: this._mapTypeToJira(item.type) },

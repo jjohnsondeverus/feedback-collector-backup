@@ -854,6 +854,22 @@ function createPreviewModal(items) {
         }
       },
       {
+        type: 'input',
+        block_id: 'jira_project',
+        label: {
+          type: 'plain_text',
+          text: 'Jira Project Key'
+        },
+        element: {
+          type: 'plain_text_input',
+          action_id: 'project_key',
+          placeholder: {
+            type: 'plain_text',
+            text: 'e.g., CORE, PLAT, etc.'
+          }
+        }
+      },
+      {
         type: 'divider'
       },
       ...items.map((item, index) => {
@@ -987,6 +1003,12 @@ app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
     const selectedItems = [];
     const values = view.state.values;
     
+    // Get the project key
+    const projectKey = values.jira_project?.project_key?.value;
+    if (!projectKey) {
+      throw new Error('Please enter a Jira Project Key');
+    }
+    
     console.log('Modal values:', JSON.stringify(values, null, 2));
     
     // First, find all selected items
@@ -1061,7 +1083,7 @@ app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
     
     // Create Jira tickets for selected items
     const service = new FeedbackCollectionService(null, { slackClient: client });
-    await service.createJiraTickets(selectedItems);
+    await service.createJiraTickets(selectedItems, projectKey);
     
     // Update with completion message
     await client.chat.update({
