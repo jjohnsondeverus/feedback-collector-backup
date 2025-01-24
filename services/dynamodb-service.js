@@ -1,167 +1,79 @@
-const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { 
-  DynamoDBDocumentClient, 
-  PutCommand, 
-  GetCommand, 
-  QueryCommand, 
-  TransactWriteCommand 
-} = require('@aws-sdk/lib-dynamodb');
-const { v4: uuidv4 } = require('uuid');
+const AWS = require('aws-sdk');
 
 class DynamoDBService {
-  constructor() {
-    const client = new DynamoDBClient({
-      region: process.env.AWS_REGION || 'us-west-2',
-      endpoint: process.env.DYNAMODB_ENDPOINT || 'http://localhost:8000',
-      credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'local',
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'local'
-      }
-    });
-
-    this.dynamodb = DynamoDBDocumentClient.from(client, {
-      marshallOptions: {
-        removeUndefinedValues: true,
-        convertEmptyValues: true
-      }
-    });
-    this.tableName = 'FeedbackCollector';
-  }
-
-  // Create a new feedback session
-  async createSession(userId, channels, startDate, endDate) {
-    const sessionId = uuidv4();
-    const timestamp = new Date().toISOString();
-
-    try {
-      // Create session metadata
-      await this.dynamodb.send(new PutCommand({
-        TableName: this.tableName,
-        Item: {
-          PK: `SESSION#${sessionId}`,
-          SK: 'METADATA',
-          userId,
-          channels,
-          startDate,
-          endDate,
-          createdAt: timestamp,
-          status: 'ACTIVE'
+  constructor(config = {}) {
+    this.dynamodb = new AWS.DynamoDB.DocumentClient({
+      region: process.env.AWS_REGION || 'us-east-1',
+      ...(process.env.AWS_ACCESS_KEY_ID === 'local' && {
+        endpoint: 'http://localhost:8000',
+        credentials: {
+          accessKeyId: 'local',
+          secretAccessKey: 'local'
         }
-      }));
-
-      // Initialize channel configs
-      for (const channelId of channels) {
-        await this.createChannelConfig(sessionId, channelId);
-      }
-
-      return sessionId;
-    } catch (error) {
-      console.error('Error creating session:', error);
-      throw error;
-    }
+      })
+    });
+    this.tableName = process.env.DYNAMODB_TABLE || 'feedback-sessions';
   }
 
-  // Add feedback items to a session
-  async addFeedbackItems(sessionId, channelId, items) {
-    const operations = items.map((item, index) => ({
-      Put: {
-        TableName: this.tableName,
+  async createSession({ sessionId, userId, channels, startDate, endDate, status }) {
+    const params = {
+      TableName: this.tableName,
+      Item: {
+        PK: sessionId,
+        SK: 'META',
+        userId,
+        channels,
+        startDate,
+        endDate,
+        status,
+        createdAt: new Date().toISOString()
+      }
+    };
+
+    await this.dynamodb.put(params).promise();
+    return sessionId;
+  }
+
+  async addFeedbackItems({ sessionId, channelId, items }) {
+    const batchWrites = items.map((item, index) => ({
+      PutRequest: {
         Item: {
-          PK: `SESSION#${sessionId}`,
+          PK: sessionId,
           SK: `FEEDBACK#${channelId}#${index}`,
           GSI1PK: `CHANNEL#${channelId}`,
-          GSI1SK: `SESSION#${sessionId}`,
+          GSI1SK: sessionId,
           ...item,
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          included: true,
+          editable: true
         }
       }
     }));
 
-    // Split into chunks of 25 due to DynamoDB transaction limits
-    for (let i = 0; i < operations.length; i += 25) {
-      const chunk = operations.slice(i, i + 25);
-      await this.dynamodb.send(new TransactWriteCommand({
-        TransactItems: chunk
-      }));
+    // Split into chunks of 25 (DynamoDB batch write limit)
+    for (let i = 0; i < batchWrites.length; i += 25) {
+      const batch = batchWrites.slice(i, i + 25);
+      await this.dynamodb.batchWrite({
+        RequestItems: {
+          [this.tableName]: batch
+        }
+      }).promise();
     }
   }
 
-  // Get session data
-  async getSession(sessionId) {
-    const result = await this.dynamodb.send(new GetCommand({
-      TableName: this.tableName,
-      Key: {
-        PK: `SESSION#${sessionId}`,
-        SK: 'METADATA'
-      }
-    }));
-
-    return result.Item;
-  }
-
-  // Get feedback items for a session
-  async getFeedbackItems(sessionId) {
-    const result = await this.dynamodb.send(new QueryCommand({
+  async getFeedbackItems(sessionId, channelId) {
+    const params = {
       TableName: this.tableName,
       KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
       ExpressionAttributeValues: {
-        ':pk': `SESSION#${sessionId}`,
+        ':pk': sessionId,
         ':sk': 'FEEDBACK#'
       }
-    }));
+    };
 
-    return result.Items;
-  }
-
-  // Add this method to the DynamoDBService class
-  async queryItems({ PK, SKPrefix }) {
-    const result = await this.dynamodb.send(new QueryCommand({
-      TableName: this.tableName,
-      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
-      ExpressionAttributeValues: {
-        ':pk': PK,
-        ':sk': SKPrefix
-      }
-    }));
-
-    return result.Items;
-  }
-
-  // Add these methods to handle channel config
-  async getChannelConfig(sessionId, channelId) {
-    try {
-      const result = await this.dynamodb.send(new GetCommand({
-        TableName: this.tableName,
-        Key: {
-          PK: `SESSION#${sessionId}`,
-          SK: `CONFIG#${channelId}`
-        }
-      }));
-      return result.Item;
-    } catch (error) {
-      console.error('Error getting channel config:', error);
-      throw error;
-    }
-  }
-
-  async createChannelConfig(sessionId, channelId) {
-    try {
-      await this.dynamodb.send(new PutCommand({
-        TableName: this.tableName,
-        Item: {
-          PK: `SESSION#${sessionId}`,
-          SK: `CONFIG#${channelId}`,
-          createdAt: new Date().toISOString(),
-          GSI1PK: `CHANNEL#${channelId}`,
-          GSI1SK: `SESSION#${sessionId}`
-        },
-        ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)'
-      }));
-    } catch (error) {
-      console.error('Error creating channel config:', error);
-      throw error;
-    }
+    const result = await this.dynamodb.query(params).promise();
+    return result.Items || [];
   }
 }
 
-module.exports = new DynamoDBService(); 
+module.exports = { DynamoDBService }; 
