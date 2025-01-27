@@ -126,24 +126,44 @@ async function checkJiraUser(email) {
 
 // Add helper functions for message preprocessing
 function preprocessMessages(messages) {
-  // First, group messages by thread
-  const threadGroups = messages.reduce((acc, msg) => {
+  // First, normalize and clean all messages
+  const cleanedMessages = messages.map(msg => ({
+    ...msg,
+    text: msg.text.replace(/\s+/g, ' ').trim(),  // Normalize whitespace
+    ts: msg.ts || '0',
+    thread_ts: msg.thread_ts || msg.ts || '0'
+  }));
+  
+  // Sort all messages by timestamp first
+  cleanedMessages.sort((a, b) => a.ts.localeCompare(b.ts));
+
+  // Group by thread
+  const threadGroups = cleanedMessages.reduce((acc, msg) => {
     const threadKey = msg.thread_ts || msg.ts;
     if (!acc[threadKey]) {
       acc[threadKey] = {
         messages: [],
         keywords: new Set(),
         topics: new Set(),
-        timestamp: msg.ts,
-        mainMessage: msg.thread_ts ? null : msg.text // Capture the main thread message
+        timestamp: msg.ts,  // Keep original timestamp for sorting
+        originalMessage: msg.text,  // Store original message
+        mainMessage: msg.thread_ts ? null : msg.text
       };
     }
     
-    // Extract keywords and topics
+    // Extract keywords and topics with more specific patterns
     const text = msg.text.toLowerCase();
-    const keywords = text.match(/\b(error|bug|issue|problem|feature|request|improvement|fail|broken)\b/g) || [];
-    const topics = text.match(/\b(workday|gliffy|email|integration|encryption|mvr|ukg)\b/g) || [];
+    const keywords = new Set([
+      ...(text.match(/\b(error|bug|issue|problem|feature|request|improvement|fail|broken|not work|doesn't work|incorrect|wrong)\b/g) || []),
+      ...(text.match(/\b(need|should|must|require|missing|can't|cannot|unable)\b/g) || [])
+    ]);
     
+    const topics = new Set([
+      ...(text.match(/\b(workday|gliffy|email|integration|encryption|mvr|ukg|oauth|i-?9|tenant)\b/g) || []),
+      ...(text.match(/\b(security|performance|access|permission|credential)\b/g) || [])
+    ]);
+    
+    // Add all keywords and topics
     keywords.forEach(k => acc[threadKey].keywords.add(k));
     topics.forEach(t => acc[threadKey].topics.add(t));
     
@@ -154,17 +174,20 @@ function preprocessMessages(messages) {
       thread_ts: msg.thread_ts
     });
     
-    // If this is a thread reply, update the main message
-    if (msg.thread_ts && !acc[threadKey].mainMessage) {
-      acc[threadKey].mainMessage = msg.text;
-    }
-    
     return acc;
   }, {});
 
-  // Now group related threads by topic
+  // Sort threads by timestamp
+  const sortedThreads = Object.entries(threadGroups)
+    .sort(([, a], [, b]) => a.timestamp.localeCompare(b.timestamp))
+    .reduce((acc, [key, value]) => {
+      acc[key] = value;
+      return acc;
+    }, {});
+
+  // Group related threads by topic
   const topicGroups = {};
-  Object.entries(threadGroups).forEach(([threadKey, thread]) => {
+  Object.entries(sortedThreads).forEach(([threadKey, thread]) => {
     Array.from(thread.topics).forEach(topic => {
       if (!topicGroups[topic]) {
         topicGroups[topic] = [];
@@ -177,7 +200,7 @@ function preprocessMessages(messages) {
   });
 
   return {
-    threads: threadGroups,
+    threads: sortedThreads,
     topics: topicGroups
   };
 }
@@ -186,32 +209,38 @@ function createAnalysisPrompt(messages) {
   return `Analyze these Slack messages and identify distinct issues that need tickets.
   
   Required Analysis Steps:
-  1. For each topic group:
-    - Identify ALL distinct technical issues related to that topic
-    - Consider all mentions and context across different threads
-    - Do not skip any issues that have clear impact
+  1. First pass - Identify all potential issues:
+    - Process messages in chronological order
+    - Look for any mention of problems, needs, or requirements
+    - Flag all technical issues, regardless of complexity
+    - Do not skip any potential issues
   
-  2. For each identified issue, verify it has ALL of:
-     - Clear technical problem or request
-     - Specific impact on users/business
-     - Actionable solution or expectation
+  2. Second pass - Group related mentions:
+    - Find all mentions of the same issue across threads
+    - Group by specific technical component (e.g., Workday integration, OAuth)
+    - Keep track of all related discussions
   
-  3. Keep separate issues distinct:
-     - Different aspects of the same system should be separate tickets
-     - Different user impacts should be separate tickets
-     - Different expected behaviors should be separate tickets
-     - Only combine if describing exactly the same issue
+  3. For each identified issue group:
+    - Create a separate ticket for each distinct problem
+    - Do not combine issues unless they are exactly the same
+    - Include all relevant context from related mentions
   
-  4. For each final issue, extract EXACTLY:
-     title: One-line summary of the issue
-     type: "Bug" | "Feature" | "Improvement"
-     priority: "High" | "Medium" | "Low"
-     user_impact: Specific business/user effect
-     current_behavior: Precise current state
-     expected_behavior: Clear desired outcome
+  4. For each final ticket, verify and include:
+    - Different aspects of the same system should be separate tickets
+    - Different user impacts should be separate tickets
+    - Different expected behaviors should be separate tickets
+    - Only combine if describing exactly the same issue
+  
+  5. Format each ticket EXACTLY as:
+    title: One-line summary of the issue
+    type: "Bug" | "Feature" | "Improvement"
+    priority: "High" | "Medium" | "Low"
+    user_impact: Specific business/user effect
+    current_behavior: Precise current state
+    expected_behavior: Clear desired outcome
   
   Important:
-  - Do not limit the number of issues
+  - Process ALL messages
   - Include all valid issues found
   - Keep distinct problems separate
   - Be thorough in analysis
