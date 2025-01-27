@@ -126,52 +126,81 @@ async function checkJiraUser(email) {
 
 // Add helper functions for message preprocessing
 function preprocessMessages(messages) {
-  return messages
-    // Sort messages by timestamp
-    .sort((a, b) => (a.ts || '0') < (b.ts || '0') ? -1 : 1)
-    // Group by thread and clean text
-    .reduce((acc, msg) => {
-      const threadKey = msg.thread_ts || msg.ts;
-      if (!acc[threadKey]) {
-        acc[threadKey] = {
-          messages: [],
-          keywords: new Set()
-        };
+  // First, group messages by thread
+  const threadGroups = messages.reduce((acc, msg) => {
+    const threadKey = msg.thread_ts || msg.ts;
+    if (!acc[threadKey]) {
+      acc[threadKey] = {
+        messages: [],
+        keywords: new Set(),
+        topics: new Set(),
+        timestamp: msg.ts,
+        mainMessage: msg.thread_ts ? null : msg.text // Capture the main thread message
+      };
+    }
+    
+    // Extract keywords and topics
+    const text = msg.text.toLowerCase();
+    const keywords = text.match(/\b(error|bug|issue|problem|feature|request|improvement|fail|broken)\b/g) || [];
+    const topics = text.match(/\b(workday|gliffy|email|integration|encryption|mvr|ukg)\b/g) || [];
+    
+    keywords.forEach(k => acc[threadKey].keywords.add(k));
+    topics.forEach(t => acc[threadKey].topics.add(t));
+    
+    acc[threadKey].messages.push({
+      text: msg.text,
+      user: msg.user,
+      ts: msg.ts,
+      thread_ts: msg.thread_ts
+    });
+    
+    // If this is a thread reply, update the main message
+    if (msg.thread_ts && !acc[threadKey].mainMessage) {
+      acc[threadKey].mainMessage = msg.text;
+    }
+    
+    return acc;
+  }, {});
+
+  // Now group related threads by topic
+  const topicGroups = {};
+  Object.entries(threadGroups).forEach(([threadKey, thread]) => {
+    Array.from(thread.topics).forEach(topic => {
+      if (!topicGroups[topic]) {
+        topicGroups[topic] = [];
       }
-      
-      // Extract and normalize keywords
-      const keywords = msg.text.toLowerCase()
-        .match(/\b(error|bug|issue|problem|feature|request|improvement|fail|broken)\b/g) || [];
-      keywords.forEach(k => acc[threadKey].keywords.add(k));
-      
-      acc[threadKey].messages.push({
-        text: msg.text,
-        user: msg.user,
-        ts: msg.ts
+      topicGroups[topic].push({
+        threadKey,
+        ...thread
       });
-      
-      return acc;
-    }, {});
+    });
+  });
+
+  return {
+    threads: threadGroups,
+    topics: topicGroups
+  };
 }
 
 function createAnalysisPrompt(messages) {
   return `Analyze these Slack messages and identify distinct issues that need tickets.
   
   Required Analysis Steps:
-  1. For each conversation thread:
-     - Look for specific issue indicators (error, bug, problem, request)
-     - Identify if the thread describes a distinct technical issue
-     - Check if the issue was resolved in the thread
+  1. For each topic group:
+    - Identify ALL distinct technical issues related to that topic
+    - Consider all mentions and context across different threads
+    - Do not skip any issues that have clear impact
   
   2. For each identified issue, verify it has ALL of:
      - Clear technical problem or request
      - Specific impact on users/business
      - Actionable solution or expectation
   
-  3. Combine duplicate issues by matching:
-     - Similar problem descriptions
-     - Related error messages
-     - Connected functionality
+  3. Keep separate issues distinct:
+     - Different aspects of the same system should be separate tickets
+     - Different user impacts should be separate tickets
+     - Different expected behaviors should be separate tickets
+     - Only combine if describing exactly the same issue
   
   4. For each final issue, extract EXACTLY:
      title: One-line summary of the issue
@@ -181,9 +210,13 @@ function createAnalysisPrompt(messages) {
      current_behavior: Precise current state
      expected_behavior: Clear desired outcome
   
-  Return array of issues sorted by title.
-  Each issue must have all fields.
-  Do not include partially described issues.`;
+  Important:
+  - Do not limit the number of issues
+  - Include all valid issues found
+  - Keep distinct problems separate
+  - Be thorough in analysis
+  
+  Return array of issues sorted by title.`;
 }
 
 async function analyzeFeedback(messages) {
@@ -192,8 +225,8 @@ async function analyzeFeedback(messages) {
     const processedThreads = preprocessMessages(messages);
     
     // Log analysis inputs for debugging
-    console.log('Processing threads:', Object.keys(processedThreads).length);
-    Object.entries(processedThreads).forEach(([threadKey, data]) => {
+    console.log('Processing threads:', Object.keys(processedThreads.threads).length);
+    Object.entries(processedThreads.threads).forEach(([threadKey, data]) => {
       console.log(`Thread ${threadKey}:`, {
         messages: data.messages.length,
         keywords: Array.from(data.keywords)
@@ -220,7 +253,7 @@ async function analyzeFeedback(messages) {
         },
         {
           role: 'user',
-          content: JSON.stringify(processedThreads)
+          content: JSON.stringify(processedThreads.threads)
         }
       ],
       temperature: 0.2,
