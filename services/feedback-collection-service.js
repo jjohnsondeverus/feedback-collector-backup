@@ -44,6 +44,19 @@ class FeedbackCollectionService {
     return { items };
   }
 
+  _calculateSimilarity(str1, str2) {
+    const s1 = str1.toLowerCase().replace(/[^a-z0-9\s]/g, '');
+    const s2 = str2.toLowerCase().replace(/[^a-z0-9\s]/g, '');
+    
+    const words1 = new Set(s1.split(/\s+/));
+    const words2 = new Set(s2.split(/\s+/));
+    
+    const intersection = new Set([...words1].filter(x => words2.has(x)));
+    const union = new Set([...words1, ...words2]);
+    
+    return intersection.size / union.size;
+  }
+
   async createJiraTickets(selectedItems, projectKey) {
     if (!selectedItems || selectedItems.length === 0) {
       throw new Error('No items selected for ticket creation');
@@ -67,20 +80,6 @@ class FeedbackCollectionService {
       throw new Error('No feedback items found for this session');
     }
     
-    // Function to calculate similarity between two strings
-    _calculateSimilarity(str1, str2) {
-      const s1 = str1.toLowerCase().replace(/[^a-z0-9\s]/g, '');
-      const s2 = str2.toLowerCase().replace(/[^a-z0-9\s]/g, '');
-      
-      const words1 = new Set(s1.split(/\s+/));
-      const words2 = new Set(s2.split(/\s+/));
-      
-      const intersection = new Set([...words1].filter(x => words2.has(x)));
-      const union = new Set([...words1, ...words2]);
-      
-      return intersection.size / union.size;
-    }
-
     // Function to check for duplicate issues
     const checkForDuplicate = async (summary) => {
       try {
@@ -90,7 +89,7 @@ class FeedbackCollectionService {
         
         // Check each issue for similarity
         for (const issue of results.issues) {
-          const similarity = this._calculateSimilarity(summary, issue.fields.summary);
+          const similarity = this._calculateSimilarity.bind(this)(summary, issue.fields.summary);
           console.log(`Comparing "${summary}" with "${issue.fields.summary}": ${similarity}`);
           if (similarity >= threshold) {
             return issue;
