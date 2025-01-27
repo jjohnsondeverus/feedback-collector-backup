@@ -604,7 +604,7 @@ app.action('create_tickets', async ({ ack, body, client }) => {
         callback_id: 'collect_feedback_modal',
         title: {
           type: 'plain_text',
-          text: 'Select Channel & Dates'
+          text: 'Select Channel and Dates'
         },
         blocks: [
           {
