@@ -856,10 +856,6 @@ function createPreviewModal(items) {
       {
         type: 'input',
         block_id: 'jira_project',
-        label: {
-          type: 'plain_text',
-          text: 'Jira Project Key'
-        },
         element: {
           type: 'plain_text_input',
           action_id: 'project_key',
@@ -867,6 +863,11 @@ function createPreviewModal(items) {
             type: 'plain_text',
             text: 'e.g., CORE, PLAT, etc.'
           }
+        },
+        label: {
+          type: 'plain_text',
+          text: 'Jira Project Key',
+          emoji: true
         }
       },
       {
@@ -1007,6 +1008,11 @@ app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
     const projectKey = values.jira_project?.project_key?.value;
     if (!projectKey) {
       throw new Error('Please enter a Jira Project Key');
+    }
+    
+    // Validate project key format (typically uppercase letters followed by numbers)
+    if (!/^[A-Z][A-Z0-9_]+$/.test(projectKey)) {
+      throw new Error('Invalid Jira Project Key format. Should be uppercase letters and numbers (e.g., CORE, PLAT)');
     }
     
     console.log('Modal values:', JSON.stringify(values, null, 2));
