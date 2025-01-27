@@ -67,11 +67,33 @@ class FeedbackCollectionService {
       throw new Error('No feedback items found for this session');
     }
     
+    // Function to check for duplicate issues
+    const checkForDuplicate = async (summary) => {
+      try {
+        const jql = `project = "${projectKey}" AND summary ~ "${summary.replace(/"/g, '\\"')}" AND created >= -30d`;
+        const results = await this.jira.searchJira(jql);
+        return results.issues.length > 0 ? results.issues[0] : null;
+      } catch (error) {
+        console.error('Error checking for duplicates:', error);
+        return null;
+      }
+    };
+    
     const tickets = await Promise.all(selectedItems.map(async (selected) => {
       const item = items.find((_, index) => index === selected.index);
       if (!item) return null;
 
       try {
+        // Check for duplicates
+        const duplicate = await checkForDuplicate(selected.title);
+        if (duplicate) {
+          return {
+            skipped: true,
+            title: selected.title,
+            duplicateKey: duplicate.key
+          };
+        }
+        
         // Create Jira issue
         const issue = await this.jira.addNewIssue({
           fields: {
@@ -83,14 +105,17 @@ class FeedbackCollectionService {
           }
         });
         console.log(`Created Jira ticket: ${issue.key}`);
-        return issue;
+        return {
+          ...issue,
+          skipped: false
+        };
       } catch (error) {
         console.error('Error creating Jira ticket:', error);
         throw new Error(`Failed to create Jira ticket: ${error.message}`);
       }
     }));
 
-    return tickets.filter(t => t);
+    return tickets.filter(Boolean);
   }
 
   _mapTypeToJira(type) {

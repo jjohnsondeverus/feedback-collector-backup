@@ -1005,14 +1005,14 @@ app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
     const values = view.state.values;
     
     // Get the project key
-    const projectKey = values.jira_project?.project_key?.value;
+    const projectKey = values.jira_project?.project_key?.value?.toUpperCase();
     if (!projectKey) {
       throw new Error('Please enter a Jira Project Key');
     }
     
     // Validate project key format (typically uppercase letters followed by numbers)
     if (!/^[A-Z][A-Z0-9_]+$/.test(projectKey)) {
-      throw new Error('Invalid Jira Project Key format. Should be uppercase letters and numbers (e.g., CORE, PLAT)');
+      throw new Error('Invalid Jira Project Key format. Should be letters and numbers (e.g., CORE, PLAT)');
     }
     
     console.log('Modal values:', JSON.stringify(values, null, 2));
@@ -1089,13 +1089,21 @@ app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
     
     // Create Jira tickets for selected items
     const service = new FeedbackCollectionService(null, { slackClient: client });
-    await service.createJiraTickets(selectedItems, projectKey);
+    const createdTickets = await service.createJiraTickets(selectedItems, projectKey);
     
     // Update with completion message
+    const ticketSummary = createdTickets.map(ticket => {
+      if (ticket.skipped) {
+        return `• ${ticket.title} - Skipped (Duplicate of ${ticket.duplicateKey})`;
+      }
+      return `• <${process.env.JIRA_HOST}/browse/${ticket.key}|${ticket.key}> - ${ticket.fields.summary}`;
+    }).join('\n');
+    
     await client.chat.update({
       channel: dmChannel.channel.id,
       ts: message.ts,
-      text: "✅ Jira tickets created successfully!"
+      text: `✅ Jira tickets processed:\n${ticketSummary}`,
+      mrkdwn: true
     });
   } catch (error) {
     console.error('Error creating tickets:', error);
