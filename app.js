@@ -608,6 +608,16 @@ app.action('create_tickets', async ({ ack, body, client }) => {
         },
         blocks: [
           {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*Note:* For private channels, please invite the bot using `/invite @YourBotName` before collecting feedback.'
+            }
+          },
+          {
+            type: 'divider'
+          },
+          {
             type: 'input',
             block_id: 'channel_select',
             label: {

@@ -21,6 +21,8 @@ A Slack app that collects user feedback from channels, analyzes it using GPT-4, 
 - ✏️ Interactive preview and editing of tickets
 - 🔄 Ticket exclusion and inclusion
 - ⚡ Real-time processing and updates
+- Collect feedback from specified Slack channels
+- Support for both public and private channels
 
 ## Setup
 
@@ -35,6 +37,8 @@ A Slack app that collects user feedback from channels, analyzes it using GPT-4, 
 
 1. Clone the repository and install dependencies:
 ```bash
+git clone [repository-url]
+cd feedback-collector
 npm install
 ```
 
@@ -223,3 +227,16 @@ pm2 restart app --update-env
 ## Support
 
 Contact the development team for support and feature requests.
+
+## Channel Access
+
+The bot can access channels in two ways:
+
+1. **Public Channels**
+   - Bot will automatically join when collecting feedback
+   - No additional setup required
+
+2. **Private Channels**
+   - Bot must be explicitly invited using `/invite @YourBotName`
+   - Must be invited before collecting feedback
+   - Channel members with permission can invite the bot
