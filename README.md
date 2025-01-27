@@ -47,7 +47,7 @@ JIRA_HOST=your-domain.atlassian.net
 JIRA_USERNAME=your-email@domain.com
 JIRA_API_TOKEN=...
 OPENAI_API_KEY=...
-DUPLICATE_SIMILARITY_THRESHOLD=0.5
+DUPLICATE_SIMILARITY_THRESHOLD=0.3
 ```
 
 3. Start the application:
@@ -82,10 +82,10 @@ npm run dev
 
 ### Environment Variables
 
-- `DUPLICATE_SIMILARITY_THRESHOLD`: (Default: 0.5) Controls duplicate detection sensitivity:
-  - Higher values (e.g., 0.7) require tickets to be more similar
-  - Lower values (e.g., 0.3) catch more potential duplicates
-  - Recommended range: 0.4 - 0.7
+- `DUPLICATE_SIMILARITY_THRESHOLD`: (Default: 0.3) Controls duplicate detection sensitivity:
+  - Lower values (e.g., 0.2) catch more potential duplicates
+  - Higher values (e.g., 0.4) require tickets to be more similar
+  - Recommended range: 0.2 - 0.4
 
 ### Channel Types
 
@@ -134,3 +134,92 @@ MIT License
 ## Support
 
 For support, please open an issue for the developer with the label "feedback-collector" in the repository.
+
+## Duplicate Detection Configuration
+
+The app uses a similarity-based approach to detect duplicate tickets:
+
+### How it works
+
+1. **Title Similarity (60% weight)**
+   - Compares the titles of tickets using word overlap
+   - Case-insensitive comparison
+   - Ignores special characters
+
+2. **Content Similarity (40% weight)**
+   - Compares ticket content including:
+     - User Impact
+     - Current Behavior
+     - Expected Behavior
+
+3. **Threshold**
+   - Default: 0.3 (30% similarity)
+   - Adjustable via DUPLICATE_SIMILARITY_THRESHOLD
+   - Range: 0.0 to 1.0 (0% to 100%)
+
+### Adjusting Settings
+
+1. **Change Similarity Threshold**
+   - Lower value (e.g., 0.2): More likely to mark as duplicate
+   - Higher value (e.g., 0.4): Stricter duplicate detection
+   - Update in .env file:
+   ```env
+   DUPLICATE_SIMILARITY_THRESHOLD=0.3
+   ```
+
+2. **View Similarity Scores**
+   - Check logs for detailed comparison:
+   ```bash
+   pm2 logs
+   ```
+   - Shows title, content, and overall similarity scores
+
+## Development
+
+1. Start the app:
+```bash
+npm start
+```
+
+2. Run tests:
+```bash
+npm test
+```
+
+3. Update the app:
+```bash
+pm2 restart app --update-env
+```
+
+## Deployment
+
+1. SSH into EC2:
+```bash
+ssh -i feedback-collector-backup-key.pem ec2-user@your-ec2-ip
+```
+
+2. Update environment variables:
+```bash
+cd feedback-collector-backup
+nano .env
+```
+
+3. Restart the app:
+```bash
+pm2 restart app --update-env
+```
+
+## Troubleshooting
+
+1. **Duplicate Detection Issues**
+   - Check similarity scores in logs
+   - Adjust threshold if needed
+   - Verify content being compared
+
+2. **App Restart Required**
+   - After changing .env variables
+   - After updating duplicate detection settings
+
+## Support
+
+Contact the development team for support and feature requests.
