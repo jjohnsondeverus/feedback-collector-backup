@@ -46,72 +46,36 @@ const openai = new OpenAI({
 
 // Helper function to fetch messages from a channel within a date range
 async function getMessagesInDateRange(client, channelId, startDate, endDate) {
+  console.log('Fetching messages for channel:', channelId);
+  console.log('Date range:', startDate, 'to', endDate);
+
   try {
-    // Try to join the channel first
-    try {
-      await client.conversations.join({ channel: channelId });
-    } catch (joinError) {
-      // Ignore if we're already in the channel or if it's a private channel
-      if (joinError.data?.error !== 'already_in_channel' && joinError.data?.error !== 'is_private') {
-        throw joinError;
+    const messages = [];
+    let cursor;
+
+    do {
+      const result = await client.conversations.history({
+        channel: channelId,
+        limit: 100,
+        cursor: cursor,
+        oldest: new Date(startDate).getTime() / 1000,
+        latest: new Date(endDate).getTime() / 1000
+      });
+
+      console.log(`Fetched ${result.messages?.length || 0} messages`);
+      
+      if (result.messages) {
+        messages.push(...result.messages);
       }
-    }
+      
+      cursor = result.response_metadata?.next_cursor;
+    } while (cursor);
 
-    // Convert dates to timestamps (seconds since epoch)
-    const startTimestamp = Math.floor(new Date(startDate).getTime() / 1000);
-    const endTimestamp = Math.floor(new Date(endDate).setHours(23, 59, 59, 999) / 1000);
-
-    const result = await client.conversations.history({
-      channel: channelId,
-      oldest: startTimestamp.toString(),
-      latest: endTimestamp.toString(),
-      inclusive: true,
-      limit: 1000
-    });
-
-    // Get user info for all messages
-    const userIds = new Set(result.messages.map(msg => msg.user));
-    const userInfo = {};
-    
-    // Batch fetch user information
-    for (const userId of userIds) {
-      try {
-        const info = await client.users.info({ user: userId });
-        userInfo[userId] = {
-          name: info.user.real_name || info.user.name,
-          email: info.user.profile.email
-        };
-      } catch (error) {
-        console.warn(`Could not fetch info for user ${userId}:`, error.message);
-        userInfo[userId] = { name: 'Unknown User', email: '' };
-      }
-    }
-
-    // Fetch all thread replies for messages
-    const messagesWithReplies = await Promise.all(
-      result.messages.map(async (message) => {
-        if (message.thread_ts) {
-          const replies = await client.conversations.replies({
-            channel: channelId,
-            ts: message.thread_ts,
-            oldest: startTimestamp.toString(),
-            latest: endTimestamp.toString()
-          });
-          return replies.messages.map(msg => ({
-            ...msg,
-            user_info: userInfo[msg.user]
-          }));
-        }
-        return [{
-          ...message,
-          user_info: userInfo[message.user]
-        }];
-      })
-    );
-
-    return messagesWithReplies.flat();
+    return messages;
   } catch (error) {
-    console.error('Error fetching messages:', error);
+    console.error('Error in getMessagesInDateRange:', error);
+    console.error('Channel ID:', channelId);
+    console.error('Error details:', JSON.stringify(error.data || {}, null, 2));
     throw error;
   }
 }
@@ -777,59 +741,51 @@ async function handleFeedbackCollection(client, userId, messageTs, startDate, en
 
 app.view('collect_feedback_modal', async ({ ack, body, view, client }) => {
   try {
+    // Get values from the modal
     const channelId = view.state.values.channel_select.channel_selected.selected_conversation;
     const start = view.state.values.startDate.datepicker.selected_date;
     const end = view.state.values.endDate.datepicker.selected_date;
 
     await ack();
-    
+
+    console.log('Selected channel:', channelId);
+    console.log('Date range:', start, 'to', end);
+
+    // Create a session ID
+    const sessionId = `SESSION#${Date.now()}`;
+
     // Open DM channel first
     const dmChannel = await client.conversations.open({
       users: body.user.id
     });
-    
-    // Send status updates to the user directly
+
+    // Send initial progress message
     const message = await client.chat.postMessage({
-      channel: dmChannel.channel.id,  // Use the DM channel ID
-      text: "🔍 Starting feedback collection process..."
+      channel: dmChannel.channel.id,
+      text: "🔄 Starting feedback collection..."
     });
 
-    const service = new FeedbackCollectionService(null, { slackClient: client });
-    const session = await service.startSession({
-      userId: body.user.id,
-      channels: [channelId],
-      startDate: start,
-      endDate: end
-    });
-
+    // Start the feedback collection process
     await handleFeedbackCollection(
-      client, 
-      dmChannel.channel.id,  // Use the DM channel ID
+      client,
+      dmChannel.channel.id,
       message.ts,
       start,
       end,
-      session.sessionId,
-      channelId  // Pass target channel as extra param
+      sessionId,
+      channelId  // Make sure we're passing the channel ID here
     );
   } catch (error) {
-    console.error('Error:', error);
-    try {
-      // Try to send error message to user's DM
-      const dmChannel = await client.conversations.open({
-        users: body.user.id
-      });
-      await client.chat.postMessage({
-        channel: dmChannel.channel.id,
-        text: `❌ Error: ${error.message}\nPlease try again.`
-      });
-    } catch (dmError) {
-      console.error('Error sending DM:', dmError);
-    }
-    await ack({
-      response_action: "errors",
-      errors: {
-        channels: "Error starting collection: " + error.message
-      }
+    console.error('Error in collect_feedback_modal:', error);
+    console.error('Error details:', JSON.stringify(error.data || {}, null, 2));
+    
+    // Notify user of error
+    const dmChannel = await client.conversations.open({
+      users: body.user.id
+    });
+    await client.chat.postMessage({
+      channel: dmChannel.channel.id,
+      text: `❌ Error collecting feedback: ${error.message}`
     });
   }
 });
