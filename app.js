@@ -625,7 +625,7 @@ app.action('create_tickets', async ({ ack, body, client }) => {
                 text: 'Select a channel'
               },
               filter: {
-                include: ['public_channel', 'private_channel']
+                include: ['im', 'mpim', 'private', 'public']
               },
               action_id: 'channel_selected'
             }
