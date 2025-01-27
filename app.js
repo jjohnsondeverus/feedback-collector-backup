@@ -600,6 +600,8 @@ app.action('create_tickets', async ({ ack, body, client }) => {
   try {
     await ack();
     
+    console.log('Creating channel selector modal...');
+    
     // Show the date/channel picker modal
     await client.views.push({
       trigger_id: body.trigger_id,
@@ -625,7 +627,8 @@ app.action('create_tickets', async ({ ack, body, client }) => {
                 text: 'Select a channel'
               },
               filter: {
-                include: ['channel']
+                include: ['public', 'private'],
+                exclude_bot_users: true
               },
               action_id: 'channel_selected'
             }
@@ -661,8 +664,10 @@ app.action('create_tickets', async ({ ack, body, client }) => {
         }
       }
     });
+    console.log('Modal created successfully');
   } catch (error) {
-    console.error('Error showing date picker:', error);
+    console.error('Error creating modal:', error);
+    console.error('Error details:', JSON.stringify(error.data || {}, null, 2));
   }
 });
 
