@@ -126,25 +126,46 @@ async function checkJiraUser(email) {
 
 // Add this function near other helper functions
 function createAnalysisPrompt(messages) {
-  return `Analyze these Slack messages and identify distinct issues that need tickets. 
-
-Guidelines for identifying issues:
-1. Must be actionable problems or feature requests
-2. Must have clear impact or business value
-3. Must be specific enough to implement
-4. Ignore casual discussions or resolved issues
-5. Combine related mentions of the same issue
-
-For each issue, extract:
-- Title: Clear, concise description
-- Type: Bug, Feature, or Improvement
-- Priority: Based on user impact and urgency
-- User Impact: How it affects users/business
-- Current Behavior: What's happening now
-- Expected Behavior: What should happen
-
-Format each issue as a JSON object with these exact fields.
-Return an array of these objects.`;
+  return `Analyze these Slack messages and identify distinct issues that need tickets.
+  Follow these steps exactly:
+  
+  1. First, identify all mentions of:
+     - Technical problems or bugs
+     - Feature requests
+     - Integration issues
+     - Security concerns
+     - Performance issues
+  
+  2. For each identified issue:
+     - Combine multiple mentions of the same issue
+     - Ignore if it's marked as resolved
+     - Verify it has clear business impact
+     - Confirm it's specific enough to implement
+  
+  3. For each remaining issue, extract exactly:
+  - Title: Clear, concise description
+  - Type: Bug, Feature, or Improvement
+  - Priority: Based on user impact and urgency
+  - User Impact: How it affects users/business
+  - Current Behavior: What's happening now
+  - Expected Behavior: What should happen
+  
+  4. Format each issue consistently:
+     - Title should be a clear problem statement
+     - Type should match the issue category
+     - Priority should reflect business impact
+     - Impact should focus on user/business effects
+     - Current/Expected behavior should be specific
+  
+  Return a JSON array where each object has exactly these fields:
+  {
+    "title": "string",
+    "type": "string",
+    "priority": "string",
+    "user_impact": "string",
+    "current_behavior": "string",
+    "expected_behavior": "string"
+  }`;
 }
 
 // Update the analyzeFeedback function to include reporter info
