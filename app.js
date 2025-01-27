@@ -214,19 +214,38 @@ function identifyPotentialIssues(messages) {
     'can\'t', 'cannot', 'unable', 'fail', 'failing'
   ];
 
+  console.log('\n=== Starting Issue Identification ===');
+  console.log('Total threads:', Object.keys(messages.threads).length);
+
   // First pass: Find thread starters that indicate issues
   Object.entries(messages.threads)
     .sort(([, a], [, b]) => a.timestamp.localeCompare(b.timestamp))
     .forEach(([threadKey, thread]) => {
       const mainMessage = thread.mainMessage?.toLowerCase() || '';
       
+      // Log thread analysis
+      console.log('\nAnalyzing thread:', {
+        timestamp: thread.timestamp,
+        messagePreview: thread.mainMessage?.slice(0, 100),
+        topics: Array.from(thread.topics),
+        keywords: Array.from(thread.keywords)
+      });
+      
       // Check if main message indicates an issue
-      const hasIssueIndicator = issueIndicators.some(indicator => 
-        mainMessage.includes(indicator)
-      );
+      const hasIssueIndicator = issueIndicators.some(indicator => {
+        const matches = mainMessage.includes(indicator);
+        if (matches) {
+          console.log(`Found issue indicator: "${indicator}"`);
+        }
+        return matches;
+      });
       
       if (hasIssueIndicator) {
         const key = `${thread.timestamp}_${mainMessage.slice(0, 50)}`;
+        console.log('Adding potential issue:', {
+          key,
+          messagePreview: thread.mainMessage?.slice(0, 100)
+        });
         issues.set(key, {
           mainMessage: thread.mainMessage,
           timestamp: thread.timestamp,
@@ -236,6 +255,9 @@ function identifyPotentialIssues(messages) {
         });
       }
     });
+
+  console.log('\n=== Issue Identification Complete ===');
+  console.log('Potential issues found:', issues.size);
 
   return Array.from(issues.values());
 }
@@ -290,12 +312,17 @@ async function analyzeFeedback(messages) {
     // First identify potential issues deterministically
     const potentialIssues = identifyPotentialIssues(processedThreads);
     
-    console.log('Potential issues identified:', potentialIssues.length);
+    console.log('\n=== Starting GPT Analysis ===');
+    console.log('Sending potential issues to GPT:', potentialIssues.length);
+    
+    // Log each potential issue being sent
     potentialIssues.forEach((issue, index) => {
-      console.log(`Issue ${index + 1}:`, {
+      console.log(`\nPotential Issue ${index + 1}:`, {
+        timestamp: issue.timestamp,
         message: issue.mainMessage?.slice(0, 100),
         components: issue.components,
-        keywords: issue.keywords
+        keywords: issue.keywords,
+        relatedMessages: issue.messages.length
       });
     });
 
@@ -326,15 +353,25 @@ async function analyzeFeedback(messages) {
           content: JSON.stringify(potentialIssues)
         }
       ],
-      temperature: 0,  // Use 0 for maximum consistency
+      temperature: 0,
       max_tokens: 4096,
       response_format: { type: "json" }
     });
 
     const response = JSON.parse(completion.choices[0].message.content);
     
+    console.log('\n=== GPT Analysis Complete ===');
+    console.log('Response from GPT:', {
+      totalIssuesReceived: response.length,
+      issues: response.map(issue => ({
+        title: issue.title,
+        type: issue.type,
+        priority: issue.priority
+      }))
+    });
+
     // Log analysis results
-    console.log('Analysis results:', {
+    console.log('\n=== Final Analysis Results ===', {
       potentialIssues: potentialIssues.length,
       validatedIssues: response.length,
       excluded: potentialIssues.length - response.length
