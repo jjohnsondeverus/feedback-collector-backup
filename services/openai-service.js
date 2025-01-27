@@ -59,14 +59,18 @@ class OpenAIService {
                 - Include all relevant context
                 - Format exactly as specified
               
-              Return array of issues with these exact fields:
+              Return a JSON object with this exact structure:
               {
-                "title": "Clear problem statement",
-                "type": "bug|improvement|feature",
-                "priority": "high|medium|low",
-                "user_impact": "Specific business/user effect",
-                "current_behavior": "Precise current state",
-                "expected_behavior": "Clear desired outcome"
+                "feedback": [
+                  {
+                    "title": "Clear problem statement",
+                    "type": "bug|improvement|feature",
+                    "priority": "high|medium|low",
+                    "user_impact": "Specific business/user effect",
+                    "current_behavior": "Precise current state",
+                    "expected_behavior": "Clear desired outcome"
+                  }
+                ]
               }`
           },
           {
@@ -74,7 +78,7 @@ class OpenAIService {
             content: JSON.stringify(messages)
           }
         ],
-        temperature: 0,  // Use 0 for maximum consistency
+        temperature: 0,
         response_format: { type: "json_object" }
       });
 
@@ -84,24 +88,34 @@ class OpenAIService {
         responseLength: response.choices[0].message.content.length
       });
 
+      // Log the raw response for debugging
+      console.log('\nRaw Response:', response.choices[0].message.content);
+
       const result = JSON.parse(response.choices[0].message.content);
-      if (!Array.isArray(result)) {
+      if (!result.feedback || !Array.isArray(result.feedback)) {
         throw new Error('Invalid response format from OpenAI');
       }
 
       console.log('\nAnalysis Results:', {
         totalThreads: Object.keys(stats.threads).length,
-        identifiedIssues: result.length,
-        issueTypes: result.reduce((acc, issue) => {
+        identifiedIssues: result.feedback.length,
+        issueTypes: result.feedback.reduce((acc, issue) => {
           acc[issue.type] = (acc[issue.type] || 0) + 1;
           return acc;
         }, {})
       });
 
-      return result.sort((a, b) => a.title.localeCompare(b.title));
+      return result.feedback.sort((a, b) => a.title.localeCompare(b.title));
 
     } catch (error) {
       console.error('Error analyzing feedback:', error);
+      // Log more details about JSON parsing errors
+      if (error.message.includes('JSON')) {
+        console.error('JSON Parse Error Details:', {
+          error: error.message,
+          responsePreview: response?.choices[0]?.message?.content?.slice(0, 200)
+        });
+      }
       if (error.message.includes('JSON')) {
         throw new Error('Failed to process feedback. Please try again.');
       }
