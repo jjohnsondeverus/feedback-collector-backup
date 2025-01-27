@@ -50,25 +50,36 @@ async function getMessagesInDateRange(client, channelId, startDate, endDate) {
   console.log('Date range:', startDate, 'to', endDate);
 
   try {
-    // Try to join the channel first
+    // First, get channel info to check if it's private
     try {
-      await client.conversations.join({ channel: channelId });
-      console.log('Successfully joined channel');
-    } catch (joinError) {
-      // Ignore if we're already in the channel or if it's private
-      if (joinError.data?.error !== 'already_in_channel' && 
-          joinError.data?.error !== 'is_private' && 
-          joinError.data?.error !== 'method_not_supported_for_channel_type') {
-        console.log('Join error:', joinError.data?.error);
-        throw joinError;
+      const channelInfo = await client.conversations.info({ channel: channelId });
+      console.log('Channel type:', channelInfo.channel.is_private ? 'private' : 'public');
+      
+      if (channelInfo.channel.is_private) {
+        // For private channels, we can't join automatically
+        console.log('Private channel detected');
+      } else {
+        // For public channels, try to join
+        try {
+          await client.conversations.join({ channel: channelId });
+          console.log('Successfully joined channel');
+        } catch (joinError) {
+          if (joinError.data?.error !== 'already_in_channel') {
+            throw joinError;
+          }
+        }
       }
+    } catch (infoError) {
+      if (infoError.data?.error === 'channel_not_found') {
+        throw new Error('Unable to access channel. For private channels, please invite the bot using /invite @YourBotName');
+      }
+      throw infoError;
     }
 
     const messages = [];
     let cursor;
 
     do {
-      // Use conversations.history for both public and private channels
       const result = await client.conversations.history({
         channel: channelId,
         limit: 100,
@@ -92,9 +103,8 @@ async function getMessagesInDateRange(client, channelId, startDate, endDate) {
     console.error('Channel ID:', channelId);
     console.error('Error details:', JSON.stringify(error.data || {}, null, 2));
     
-    // Provide more specific error messages
-    if (error.data?.error === 'channel_not_found') {
-      throw new Error('Unable to access channel. Please make sure the bot is invited to the channel.');
+    if (error.data?.error === 'channel_not_found' || error.data?.error === 'not_in_channel') {
+      throw new Error('Unable to access channel. For private channels, please invite the bot using /invite @YourBotName');
     }
     throw error;
   }
