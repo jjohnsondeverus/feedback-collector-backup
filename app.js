@@ -60,13 +60,13 @@ async function getMessagesInDateRange(client, channelId, startDate, endDate) {
         console.log('Private channel detected');
       } else {
         // For public channels, try to join
-        try {
-          await client.conversations.join({ channel: channelId });
+    try {
+      await client.conversations.join({ channel: channelId });
           console.log('Successfully joined channel');
-        } catch (joinError) {
+    } catch (joinError) {
           if (joinError.data?.error !== 'already_in_channel') {
-            throw joinError;
-          }
+        throw joinError;
+      }
         }
       }
     } catch (infoError) {
@@ -80,8 +80,8 @@ async function getMessagesInDateRange(client, channelId, startDate, endDate) {
     let cursor;
 
     do {
-      const result = await client.conversations.history({
-        channel: channelId,
+    const result = await client.conversations.history({
+      channel: channelId,
         limit: 100,
         cursor: cursor,
         oldest: Math.floor(new Date(startDate).getTime() / 1000),
@@ -139,8 +139,8 @@ function preprocessMessages(messages) {
 
   // Group by thread
   const threadGroups = cleanedMessages.reduce((acc, msg) => {
-    const threadKey = msg.thread_ts || msg.ts;
-    if (!acc[threadKey]) {
+      const threadKey = msg.thread_ts || msg.ts;
+      if (!acc[threadKey]) {
       acc[threadKey] = {
         messages: [],
         keywords: new Set(),
@@ -174,8 +174,8 @@ function preprocessMessages(messages) {
       thread_ts: msg.thread_ts
     });
     
-    return acc;
-  }, {});
+      return acc;
+    }, {});
 
   // Sort threads by timestamp
   const sortedThreads = Object.entries(threadGroups)
@@ -199,7 +199,7 @@ function preprocessMessages(messages) {
     });
   });
 
-  return {
+      return {
     threads: sortedThreads,
     topics: topicGroups
   };
@@ -214,38 +214,19 @@ function identifyPotentialIssues(messages) {
     'can\'t', 'cannot', 'unable', 'fail', 'failing'
   ];
 
-  console.log('\n=== Starting Issue Identification ===');
-  console.log('Total threads:', Object.keys(messages.threads).length);
-
   // First pass: Find thread starters that indicate issues
   Object.entries(messages.threads)
     .sort(([, a], [, b]) => a.timestamp.localeCompare(b.timestamp))
     .forEach(([threadKey, thread]) => {
       const mainMessage = thread.mainMessage?.toLowerCase() || '';
       
-      // Log thread analysis
-      console.log('\nAnalyzing thread:', {
-        timestamp: thread.timestamp,
-        messagePreview: thread.mainMessage?.slice(0, 100),
-        topics: Array.from(thread.topics),
-        keywords: Array.from(thread.keywords)
-      });
-      
       // Check if main message indicates an issue
-      const hasIssueIndicator = issueIndicators.some(indicator => {
-        const matches = mainMessage.includes(indicator);
-        if (matches) {
-          console.log(`Found issue indicator: "${indicator}"`);
-        }
-        return matches;
-      });
+      const hasIssueIndicator = issueIndicators.some(indicator => 
+        mainMessage.includes(indicator)
+      );
       
       if (hasIssueIndicator) {
         const key = `${thread.timestamp}_${mainMessage.slice(0, 50)}`;
-        console.log('Adding potential issue:', {
-          key,
-          messagePreview: thread.mainMessage?.slice(0, 100)
-        });
         issues.set(key, {
           mainMessage: thread.mainMessage,
           timestamp: thread.timestamp,
@@ -255,9 +236,6 @@ function identifyPotentialIssues(messages) {
         });
       }
     });
-
-  console.log('\n=== Issue Identification Complete ===');
-  console.log('Potential issues found:', issues.size);
 
   return Array.from(issues.values());
 }
@@ -312,17 +290,12 @@ async function analyzeFeedback(messages) {
     // First identify potential issues deterministically
     const potentialIssues = identifyPotentialIssues(processedThreads);
     
-    console.log('\n=== Starting GPT Analysis ===');
-    console.log('Sending potential issues to GPT:', potentialIssues.length);
-    
-    // Log each potential issue being sent
+    console.log('Potential issues identified:', potentialIssues.length);
     potentialIssues.forEach((issue, index) => {
-      console.log(`\nPotential Issue ${index + 1}:`, {
-        timestamp: issue.timestamp,
+      console.log(`Issue ${index + 1}:`, {
         message: issue.mainMessage?.slice(0, 100),
         components: issue.components,
-        keywords: issue.keywords,
-        relatedMessages: issue.messages.length
+        keywords: issue.keywords
       });
     });
 
@@ -353,25 +326,15 @@ async function analyzeFeedback(messages) {
           content: JSON.stringify(potentialIssues)
         }
       ],
-      temperature: 0,
+      temperature: 0,  // Use 0 for maximum consistency
       max_tokens: 4096,
       response_format: { type: "json" }
     });
 
     const response = JSON.parse(completion.choices[0].message.content);
     
-    console.log('\n=== GPT Analysis Complete ===');
-    console.log('Response from GPT:', {
-      totalIssuesReceived: response.length,
-      issues: response.map(issue => ({
-        title: issue.title,
-        type: issue.type,
-        priority: issue.priority
-      }))
-    });
-
     // Log analysis results
-    console.log('\n=== Final Analysis Results ===', {
+    console.log('Analysis results:', {
       potentialIssues: potentialIssues.length,
       validatedIssues: response.length,
       excluded: potentialIssues.length - response.length
@@ -723,7 +686,7 @@ async function parseChannels(client, channelInput) {
 // Handle the review button click
 app.action('review_feedback', async ({ ack, body, client }) => {
   try {
-    await ack();
+  await ack();
     const { sessionId } = JSON.parse(body.actions[0].value);
     const service = new FeedbackCollectionService(null, { slackClient: client });
     const preview = await service.previewFeedbackItems({ sessionId, channelId: body.channel.id });
@@ -758,25 +721,25 @@ app.command('/collect-feedback', async ({ ack, body, client }) => {
         blocks: [
           {
             type: 'section',
-            text: {
+        text: {
               type: 'mrkdwn',
               text: 'Choose how you\'d like to process the feedback:'
-            }
-          },
-          {
+        }
+      },
+      {
             type: 'actions',
-            elements: [
-              {
+        elements: [
+          {
                 type: 'button',
-                text: {
+            text: {
                   type: 'plain_text',
                   text: 'Create Jira Tickets'
-                },
+            },
                 action_id: 'create_tickets'
-              },
-              {
+          },
+          {
                 type: 'button',
-                text: {
+            text: {
                   type: 'plain_text',
                   text: 'Generate Summary'
                 },
@@ -799,8 +762,8 @@ app.command('/collect-feedback', async ({ ack, body, client }) => {
 // Handle the Create Tickets button click
 app.action('create_tickets', async ({ ack, body, client }) => {
   try {
-    await ack();
-    
+  await ack();
+
     console.log('Creating channel selector modal...');
     
     // Show the date/channel picker modal
@@ -816,7 +779,7 @@ app.action('create_tickets', async ({ ack, body, client }) => {
         blocks: [
           {
             type: 'section',
-            text: {
+      text: {
               type: 'mrkdwn',
               text: '*Note:* For private channels, please invite the bot using `/invite @YourBotName` before collecting feedback.'
             }
@@ -831,9 +794,9 @@ app.action('create_tickets', async ({ ack, body, client }) => {
               type: 'plain_text',
               text: 'Select Channel'
             },
-            element: {
+      element: {
               type: 'conversations_select',
-              placeholder: {
+        placeholder: {
                 type: 'plain_text',
                 text: 'Select a channel'
               },
@@ -851,7 +814,7 @@ app.action('create_tickets', async ({ ack, body, client }) => {
               type: 'plain_text',
               text: 'Start Date'
             },
-            element: {
+      element: {
               type: 'datepicker',
               action_id: 'datepicker'
             }
@@ -859,17 +822,17 @@ app.action('create_tickets', async ({ ack, body, client }) => {
           {
             type: 'input',
             block_id: 'endDate',
-            label: {
+      label: {
               type: 'plain_text',
               text: 'End Date'
             },
-            element: {
+      element: {
               type: 'datepicker',
               action_id: 'datepicker'
             }
           }
         ],
-        submit: {
+    submit: {
           type: 'plain_text',
           text: 'Collect'
         }
@@ -882,233 +845,163 @@ app.action('create_tickets', async ({ ack, body, client }) => {
   }
 });
 
-// Handle the collect feedback modal submission
-app.view('collect_feedback_modal', async ({ ack, body, view, client }) => {
-  try {
-    // Acknowledge immediately to prevent trigger_id expiration
-    await ack();
-
-    // Open a loading modal first
-    const dmChannel = await client.conversations.open({
-      users: body.user.id
-    });
-
-    const loadingMessage = await client.chat.postMessage({
-      channel: dmChannel.channel.id,
-      text: "🔄 Processing feedback and analyzing messages..."
-    });
-
-    // Get values from the modal
-    const channelId = view.state.values.channel_select.channel_selected.selected_conversation;
-    const startDate = view.state.values.startDate.datepicker.selected_date;
-    const endDate = view.state.values.endDate.datepicker.selected_date;
-
-    console.log('Selected channel:', channelId);
-    console.log('Date range:', startDate, 'to', endDate);
-
-    // Fetch messages
-    const messages = await getMessagesInDateRange(client, channelId, startDate, endDate);
-    await client.chat.update({
-      channel: dmChannel.channel.id,
-      ts: loadingMessage.ts,
-      text: `📥 Fetched ${messages.length} messages, analyzing...`
-    });
-
-    console.log(`Fetched ${messages.length} messages`);
-
-    // Process the messages
-    await handleFeedbackCollection(messages, client, body);
-
-  } catch (error) {
-    console.error('Error in collect_feedback_modal:', error);
-    
-    // Send error message to user
-    const dmChannel = await client.conversations.open({
-      users: body.user.id
-    });
-    
-    let errorMessage = "❌ Error collecting feedback: ";
-    if (error.message.includes('rate_limited')) {
-      errorMessage += "Rate limit exceeded. Please wait a few minutes and try again.";
-    } else if (error.message.includes('not_in_channel')) {
-      errorMessage += "Please invite the bot to the channel first using /invite @YourBotName";
-    } else if (error.message.includes('expired_trigger_id')) {
-      errorMessage += "Processing took too long. Please try again with a smaller date range.";
-    } else {
-      errorMessage += error.message;
-    }
-
-    await client.chat.postMessage({
-      channel: dmChannel.channel.id,
-      text: errorMessage
-    });
-  }
-});
-
-// Handle the preview modal submission
-app.view('feedback_preview_modal', async ({ ack, body, view, client }) => {
-  try {
-    await ack();
-    
-    const sessionId = view.private_metadata;
-    const selectedItems = [];
-    const values = view.state.values;
-    
-    // Get the project key
-    const projectKey = values.jira_project?.project_key?.value?.toUpperCase();
-    if (!projectKey) {
-      throw new Error('Please enter a Jira Project Key');
-    }
-    
-    // Validate project key format
-    if (!/^[A-Z][A-Z0-9_]+$/.test(projectKey)) {
-      throw new Error('Invalid Jira Project Key format. Should be letters and numbers (e.g., CORE, PLAT)');
-    }
-    
-    console.log('Modal values:', JSON.stringify(values, null, 2));
-    
-    // First, find all selected items
-    const selectedIndices = new Set();
-    Object.entries(values).forEach(([blockId, blockValue]) => {
-      if (blockId.startsWith('include_') && blockValue.selected?.selected_options?.length > 0) {
-        const index = parseInt(blockValue.selected.selected_options[0].value);
-        if (!isNaN(index)) {
-          selectedIndices.add(index);
-        }
-      }
-    });
-    
-    console.log('Selected indices:', Array.from(selectedIndices));
-    
-    // Then process the selected items
-    selectedIndices.forEach(index => {
-      const item = {
-        index,
-        sessionId,
-        title: values[`edit_title_${index}`]?.title_input?.value,
-        type: values[`edit_type_${index}`]?.type_input?.selected_option?.value,
-        priority: values[`edit_priority_${index}`]?.priority_input?.selected_option?.value,
-        user_impact: values[`edit_impact_${index}`]?.impact_input?.value,
-        current_behavior: values[`edit_current_${index}`]?.current_input?.value,
-        expected_behavior: values[`edit_expected_${index}`]?.expected_input?.value
-      };
-      
-      if (item.title && item.type && item.priority) {
-        selectedItems.push(item);
-      }
-    });
-    
-    if (selectedItems.length === 0) {
-      throw new Error('Please select at least one item and fill in all required fields');
-    }
-    
-    // Create Jira tickets
-    const service = new FeedbackCollectionService(null, { slackClient: client });
-    const createdTickets = await service.createJiraTickets(selectedItems, projectKey);
-    
-    // Send results to user
-    const dmChannel = await client.conversations.open({
-      users: body.user.id
-    });
-    
-    const ticketSummary = createdTickets.map(ticket => 
-      ticket.skipped ? 
-        `• ${ticket.title} - Skipped (Duplicate of ${ticket.duplicateKey})` :
-        `• ${ticket.key} - ${ticket.title}`
-    ).join('\n');
-    
-    await client.chat.postMessage({
-      channel: dmChannel.channel.id,
-      text: [
-        `✅ Created ${createdTickets.length} Jira tickets:`,
-        ticketSummary
-      ].join('\n'),
-      mrkdwn: true
-    });
-    
-  } catch (error) {
-    console.error('Error creating tickets:', error);
-    const dmChannel = await client.conversations.open({
-      users: body.user.id
-    });
-    await client.chat.postMessage({
-      channel: dmChannel.channel.id,
-      text: `❌ Error creating tickets: ${error.message}`
-    });
-  }
-});
-
 // Start the app
 (async () => {
   await app.start(process.env.PORT || 3000);
   console.log('⚡️ Bolt app is running!');
 })();
 
-async function handleFeedbackCollection(messages, client, body) {
+async function handleFeedbackCollection(client, userId, messageTs, startDate, endDate, sessionId, targetChannel) {
   try {
-    if (!Array.isArray(messages)) {
-      console.error('Invalid messages format in handleFeedbackCollection:', messages);
-      throw new Error('Invalid messages format');
-    }
-
-    console.log(`Starting feedback collection for ${messages.length} messages`);
-
-    const service = new FeedbackCollectionService(null, { slackClient: client });
-    const feedback = await service.collectFeedbackFromMessages(messages);
-    
-    if (!Array.isArray(feedback)) {
-      console.error('Invalid feedback format received:', feedback);
-      throw new Error('Invalid feedback format');
-    }
-
-    console.log('Preparing feedback preview for', feedback.length, 'items');
-    
-    // Create the modal view
-    const blocks = createFeedbackPreviewBlocks(feedback);
-
-    if (!Array.isArray(blocks)) {
-      console.error('Invalid blocks format:', blocks);
-      throw new Error('Error creating preview blocks');
-    }
-
-    // Store feedback data for this session
-    const sessionId = generateId();
-    feedbackStorage.set(sessionId, feedback);
-    
     try {
-      await client.views.open({
-        trigger_id: body.trigger_id,
-        view: {
-          type: 'modal',
-          callback_id: 'feedback_preview_modal',
-          title: {
-            type: 'plain_text',
-            text: 'Feedback Preview'
+      // Update progress message in user's DM
+      await client.chat.update({
+        channel: userId,
+        ts: messageTs,
+        text: "📥 Fetching messages...\n0% complete"
+      });
+
+      const messages = await getMessagesInDateRange(client, targetChannel, startDate, endDate);
+
+      // Process messages in batches with progress updates
+      const totalMessages = messages.length;
+      const batchSize = 50;
+      const batches = Math.ceil(totalMessages / batchSize);
+
+      for (let i = 0; i < batches; i++) {
+        const start = i * batchSize;
+        const end = Math.min(start + batchSize, totalMessages);
+        const batch = messages.slice(start, end);
+        
+        await client.chat.update({
+          channel: userId,
+          ts: messageTs,
+          text: `🤖 Analyzing conversation...\n${Math.round((i + 1) / batches * 100)}% complete\n` +
+                `Processed ${end} of ${totalMessages} messages`
+        });
+
+        const service = new FeedbackCollectionService(null, { slackClient: client });
+        await service.collectFeedbackFromMessages({
+          sessionId,
+          channelId: targetChannel,
+          messages: batch
+        });
+      }
+
+      // Show completion message with review button
+      await client.chat.update({
+        channel: userId,
+        ts: messageTs,
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `✅ Generated feedback items from <#${targetChannel}>. Click below to review:`
+            }
           },
-          blocks: blocks,
-          private_metadata: sessionId,
-          submit: {
-            type: 'plain_text',
-            text: 'Create Tickets'
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: {
+                  type: "plain_text",
+                  text: "Review Feedback Items"
+                },
+                action_id: "review_feedback",
+                value: JSON.stringify({ sessionId })
+              }
+            ]
           }
-        }
+        ],
+        text: "Feedback collection complete" // Fallback text
       });
+
     } catch (error) {
-      console.error('Error opening modal:', {
-        error: error.message,
-        stack: error.stack,
-        blocks: blocks?.length
+      // Handle specific errors with user-friendly messages
+      let errorMessage = "An error occurred during processing.\n\n";
+      let suggestion = "";
+      
+      if (error.message.includes("rate_limited")) {
+        suggestion = "• Wait a few minutes and try again\n" +
+                    "• Try processing a smaller date range";
+      } else if (error.message.includes("not_in_channel")) {
+        suggestion = "• Invite the bot to the channel first\n" +
+                    "• Verify the bot has proper channel access";
+      } else {
+        suggestion = "• Try with a smaller date range\n" +
+                    "• Check if the channels are accessible";
+      }
+
+      await client.chat.update({
+        channel: userId,
+        ts: messageTs,
+        text: `❌ ${errorMessage}\nError: ${error.message}\n\nTry:\n${suggestion}`
       });
-      throw error;
     }
   } catch (error) {
-    console.error('Error in handleFeedbackCollection:', error);
-    throw error;
+    console.error('Error updating progress:', error);
+    await client.chat.postMessage({
+      channel: userId,
+      text: "❌ Error processing feedback. Please try again."
+    });
   }
 }
 
-// Helper functions for UI
-const createPreviewModal = (items) => {
+app.view('collect_feedback_modal', async ({ ack, body, view, client }) => {
+  try {
+    // Get values from the modal
+    const channelId = view.state.values.channel_select.channel_selected.selected_conversation;
+    const start = view.state.values.startDate.datepicker.selected_date;
+    const end = view.state.values.endDate.datepicker.selected_date;
+
+    await ack();
+
+    console.log('Selected channel:', channelId);
+    console.log('Date range:', start, 'to', end);
+
+    // Create a session ID
+    const sessionId = `SESSION#${Date.now()}`;
+
+    // Open DM channel first
+    const dmChannel = await client.conversations.open({
+      users: body.user.id
+    });
+
+    // Send initial progress message
+    const message = await client.chat.postMessage({
+      channel: dmChannel.channel.id,
+      text: "🔄 Starting feedback collection..."
+    });
+
+    // Start the feedback collection process
+    await handleFeedbackCollection(
+      client,
+      dmChannel.channel.id,
+      message.ts,
+      start,
+      end,
+      sessionId,
+      channelId  // Make sure we're passing the channel ID here
+    );
+  } catch (error) {
+    console.error('Error in collect_feedback_modal:', error);
+    console.error('Error details:', JSON.stringify(error.data || {}, null, 2));
+    
+    // Notify user of error
+    const dmChannel = await client.conversations.open({
+      users: body.user.id
+    });
+      await client.chat.postMessage({
+      channel: dmChannel.channel.id,
+      text: `❌ Error collecting feedback: ${error.message}`
+    });
+  }
+});
+
+// Create the preview modal view
+function createPreviewModal(items) {
   // Helper to ensure valid type value
   const normalizeType = (type) => {
     const validTypes = ['bug', 'feature', 'improvement'];
@@ -1134,7 +1027,7 @@ const createPreviewModal = (items) => {
     blocks: [
       {
         type: 'section',
-        text: {
+                text: {
           type: 'mrkdwn',
           text: '*Instructions:*\n• Check the boxes for items you want to create tickets for\n• Edit fields as needed\n• Title, Type, and Priority are required'
         }
@@ -1142,19 +1035,19 @@ const createPreviewModal = (items) => {
       {
         type: 'input',
         block_id: 'jira_project',
-        element: {
+            element: {
           type: 'plain_text_input',
           action_id: 'project_key',
-          placeholder: {
+              placeholder: {
             type: 'plain_text',
             text: 'e.g., CORE, PLAT, etc.'
-          }
-        },
-        label: {
+              }
+            },
+            label: {
           type: 'plain_text',
           text: 'Jira Project Key',
-          emoji: true
-        }
+              emoji: true
+            }
       },
       {
         type: 'divider'
@@ -1166,7 +1059,7 @@ const createPreviewModal = (items) => {
         return [
           {
             type: 'section',
-            text: {
+      text: {
               type: 'mrkdwn',
               text: `*${index + 1}. ${item.title}*\n${item.summary || ''}`
             },
@@ -1184,7 +1077,7 @@ const createPreviewModal = (items) => {
             block_id: `edit_title_${index}`,
             optional: true,
             label: { type: 'plain_text', text: 'Title' },
-            element: {
+      element: {
               type: 'plain_text_input',
               action_id: 'title_input',
               initial_value: item.title
@@ -1214,7 +1107,7 @@ const createPreviewModal = (items) => {
             block_id: `edit_priority_${index}`,
             optional: true,
             label: { type: 'plain_text', text: 'Priority' },
-            element: {
+      element: {
               type: 'static_select',
               action_id: 'priority_input',
               initial_option: {
@@ -1245,7 +1138,7 @@ const createPreviewModal = (items) => {
             block_id: `edit_current_${index}`,
             optional: true,
             label: { type: 'plain_text', text: 'Current Behavior' },
-            element: {
+      element: {
               type: 'plain_text_input',
               action_id: 'current_input',
               initial_value: item.current_behavior || '',
@@ -1279,200 +1172,140 @@ const createPreviewModal = (items) => {
       text: 'Cancel'
     }
   };
-};
+}
 
-// Helper function to create preview blocks for feedback items
-const createFeedbackPreviewBlocks = (feedback) => {
-  if (!Array.isArray(feedback)) {
-    console.error('Invalid feedback format:', feedback);
-    throw new Error('Invalid feedback format');
-  }
+// Handle the preview modal submission
+app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
+  try {
+  await ack();
 
-  const blocks = [];
-
-  // Add project key input
-  blocks.push(
-    {
-      type: 'input',
-      block_id: 'jira_project',
-      label: {
-        type: 'plain_text',
-        text: 'Jira Project Key'
-      },
-      element: {
-        type: 'plain_text_input',
-        action_id: 'project_key',
-        placeholder: {
-          type: 'plain_text',
-          text: 'e.g., CORE, PLAT, etc.'
-        }
-      }
-    },
-    {
-      type: 'divider'
+    const sessionId = view.private_metadata;
+    const selectedItems = [];
+    const values = view.state.values;
+    
+    // Get the project key
+    const projectKey = values.jira_project?.project_key?.value?.toUpperCase();
+    if (!projectKey) {
+      throw new Error('Please enter a Jira Project Key');
     }
-  );
-
-  // Add each feedback item
-  feedback.forEach((item, index) => {
-    blocks.push(
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*${index + 1}. ${item.title || 'Untitled Issue'}*`
+    
+    // Validate project key format (typically uppercase letters followed by numbers)
+    if (!/^[A-Z][A-Z0-9_]+$/.test(projectKey)) {
+      throw new Error('Invalid Jira Project Key format. Should be letters and numbers (e.g., CORE, PLAT)');
+    }
+    
+    console.log('Modal values:', JSON.stringify(values, null, 2));
+    
+    // First, find all selected items
+    const selectedIndices = new Set();
+    Object.entries(values).forEach(([blockId, blockValue]) => {
+      // Check if this block contains checkbox selections
+      const checkboxes = Object.values(blockValue)[0];
+      if (checkboxes?.type === 'checkboxes' && checkboxes.selected_options?.length > 0) {
+        // Extract the index from the selected option value
+        const index = parseInt(checkboxes.selected_options[0].value);
+        if (!isNaN(index)) {
+          selectedIndices.add(index);
         }
-      },
-      {
-        type: 'input',
-        block_id: `include_${index}`,
-        element: {
-          type: 'checkboxes',
-          action_id: 'selected',
-          options: [
-            {
-              text: {
-                type: 'plain_text',
-                text: 'Include'
-              },
-              value: index.toString()
-            }
-          ]
-        },
-        label: {
-          type: 'plain_text',
-          text: 'Create ticket?'
-        }
-      },
-      {
-        type: 'input',
-        block_id: `edit_title_${index}`,
-        label: {
-          type: 'plain_text',
-          text: 'Title'
-        },
-        element: {
-          type: 'plain_text_input',
-          action_id: 'title_input',
-          initial_value: item.title || ''
-        }
-      },
-      {
-        type: 'input',
-        block_id: `edit_type_${index}`,
-        label: {
-          type: 'plain_text',
-          text: 'Type'
-        },
-        element: {
-          type: 'static_select',
-          action_id: 'type_input',
-          initial_option: {
-            text: {
-              type: 'plain_text',
-              text: item.type || 'Bug'
-            },
-            value: item.type || 'bug'
-          },
-          options: [
-            {
-              text: { type: 'plain_text', text: 'Bug' },
-              value: 'bug'
-            },
-            {
-              text: { type: 'plain_text', text: 'Improvement' },
-              value: 'improvement'
-            },
-            {
-              text: { type: 'plain_text', text: 'Feature' },
-              value: 'feature'
-            }
-          ]
-        }
-      },
-      {
-        type: 'input',
-        block_id: `edit_priority_${index}`,
-        label: {
-          type: 'plain_text',
-          text: 'Priority'
-        },
-        element: {
-          type: 'static_select',
-          action_id: 'priority_input',
-          initial_option: {
-            text: {
-              type: 'plain_text',
-              text: item.priority || 'Medium'
-            },
-            value: item.priority || 'medium'
-          },
-          options: [
-            {
-              text: { type: 'plain_text', text: 'High' },
-              value: 'high'
-            },
-            {
-              text: { type: 'plain_text', text: 'Medium' },
-              value: 'medium'
-            },
-            {
-              text: { type: 'plain_text', text: 'Low' },
-              value: 'low'
-            }
-          ]
-        }
-      },
-      {
-        type: 'input',
-        block_id: `edit_impact_${index}`,
-        optional: true,
-        label: {
-          type: 'plain_text',
-          text: 'User Impact'
-        },
-        element: {
-          type: 'plain_text_input',
-          action_id: 'impact_input',
-          initial_value: item.user_impact || '',
-          multiline: true
-        }
-      },
-      {
-        type: 'input',
-        block_id: `edit_current_${index}`,
-        optional: true,
-        label: {
-          type: 'plain_text',
-          text: 'Current Behavior'
-        },
-        element: {
-          type: 'plain_text_input',
-          action_id: 'current_input',
-          initial_value: item.current_behavior || '',
-          multiline: true
-        }
-      },
-      {
-        type: 'input',
-        block_id: `edit_expected_${index}`,
-        optional: true,
-        label: {
-          type: 'plain_text',
-          text: 'Expected Behavior'
-        },
-        element: {
-          type: 'plain_text_input',
-          action_id: 'expected_input',
-          initial_value: item.expected_behavior || '',
-          multiline: true
-        }
-      },
-      {
-        type: 'divider'
       }
-    );
-  });
-
-  return blocks;
-};
+    });
+    
+    console.log('Selected indices:', Array.from(selectedIndices));
+    
+    // Then process the selected items
+    selectedIndices.forEach(index => {
+      // Get the edited values for this item
+      const titleBlock = values[`edit_title_${index}`]?.title_input?.value;
+      const typeBlock = values[`edit_type_${index}`]?.type_input?.selected_option?.value;
+      const priorityBlock = values[`edit_priority_${index}`]?.priority_input?.selected_option?.value;
+      const impactBlock = values[`edit_impact_${index}`]?.impact_input?.value;
+      const currentBlock = values[`edit_current_${index}`]?.current_input?.value;
+      const expectedBlock = values[`edit_expected_${index}`]?.expected_input?.value;
+      
+      console.log(`Processing item ${index}:`, {
+        title: titleBlock,
+        type: typeBlock,
+        priority: priorityBlock
+      });
+      
+      // Only add if we have the required fields
+      if (titleBlock && typeBlock && priorityBlock) {
+        selectedItems.push({
+          index,
+          sessionId,
+          title: titleBlock,
+          type: typeBlock,
+          priority: priorityBlock,
+          user_impact: impactBlock || '',
+          current_behavior: currentBlock || '',
+          expected_behavior: expectedBlock || ''
+        });
+      } else {
+        console.log(`Missing required fields for item ${index}`);
+      }
+    });
+    
+    if (selectedItems.length === 0) {
+      if (selectedIndices.size > 0) {
+        throw new Error('Please ensure all required fields (Title, Type, Priority) are filled for selected items');
+      } else {
+        throw new Error('Please select at least one item to create tickets for');
+      }
+    }
+    
+    console.log('Selected items:', JSON.stringify(selectedItems, null, 2));
+    
+    // Open DM channel for status updates
+    const dmChannel = await client.conversations.open({
+      users: body.user.id
+    });
+    
+    // Send processing message
+    const message = await client.chat.postMessage({
+      channel: dmChannel.channel.id,
+      text: "🎫 Creating Jira tickets..."
+    });
+    
+    // Create Jira tickets for selected items
+    const service = new FeedbackCollectionService(null, { slackClient: client });
+    const createdTickets = await service.createJiraTickets(selectedItems, projectKey);
+    
+    // Update with completion message
+    const ticketSummary = createdTickets.map(ticket => {
+      if (ticket.skipped) {
+        return `• ${ticket.title} - Skipped (Duplicate of <https://${process.env.JIRA_HOST}/browse/${ticket.duplicateKey}|${ticket.duplicateKey}>)`;
+      } else {
+        return `• <https://${process.env.JIRA_HOST}/browse/${ticket.key}|${ticket.key}> - ${ticket.title}`;
+      }
+    }).join('\n');
+    
+    const successCount = createdTickets.filter(t => !t.skipped).length;
+    const skippedCount = createdTickets.filter(t => t.skipped).length;
+    
+    const statusMessage = [
+      `✅ *Jira tickets processed:*`,
+      `• *Created:* ${successCount}`,
+      `• *Skipped:* ${skippedCount}`,
+      '',
+      ticketSummary
+    ].join('\n');
+    
+    await client.chat.update({
+      channel: dmChannel.channel.id,
+      ts: message.ts,
+      text: statusMessage,
+      mrkdwn: true,
+      unfurl_links: false  // Prevent Slack from expanding the links into previews
+    });
+  } catch (error) {
+    console.error('Error creating tickets:', error);
+    // Send error message to user
+    const dmChannel = await client.conversations.open({
+      users: body.user.id
+    });
+    await client.chat.postMessage({
+      channel: dmChannel.channel.id,
+      text: `❌ Error creating tickets: ${error.message}`
+    });
+  }
+});
