@@ -171,12 +171,31 @@ function createAnalysisPrompt(messages) {
 // Update the analyzeFeedback function to include reporter info
 async function analyzeFeedback(messages) {
   try {
+    // First, group messages by thread to maintain context
+    const messagesByThread = messages.reduce((acc, msg) => {
+      const threadKey = msg.thread_ts || msg.ts;
+      if (!acc[threadKey]) acc[threadKey] = [];
+      acc[threadKey].push(msg);
+      return acc;
+    }, {});
+
+    // Process threads in a consistent order
+    const orderedThreads = Object.entries(messagesByThread)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([_, msgs]) => msgs);
+
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
         { 
           role: 'system', 
-          content: 'You are a software development project manager skilled at identifying issues that need tracking.' 
+          content: `You are a software development project manager skilled at identifying issues that need tracking.
+            Follow these rules strictly:
+            1. Only identify clear, actionable technical issues
+            2. Ignore discussions about resolved issues
+            3. Process messages in chronological order
+            4. Combine duplicate mentions of the same issue
+            5. Return exactly the same issues given the same input`
         },
         { 
           role: 'user', 
@@ -184,15 +203,26 @@ async function analyzeFeedback(messages) {
         },
         {
           role: 'user',
-          content: JSON.stringify(messages)
+          content: JSON.stringify(orderedThreads)
         }
       ],
-      temperature: 0.1,  // Lower temperature for more consistent output
-      max_tokens: 4000,  // Increased token limit for more comprehensive analysis
-      response_format: { type: "json" }  // Enforce JSON response format
+      temperature: 0.2,  // Set to 0.2 for maximum consistency
+      max_tokens: 4096,
+      response_format: { type: "json" },
+      top_p: 1,        // Use greedy sampling
+      frequency_penalty: 0,
+      presence_penalty: 0
     });
 
-    return JSON.parse(completion.choices[0].message.content);
+    // Validate and normalize the response
+    const response = JSON.parse(completion.choices[0].message.content);
+    if (!Array.isArray(response)) {
+      throw new Error('Expected array of issues in response');
+    }
+
+    // Sort issues by title for consistency
+    return response.sort((a, b) => a.title.localeCompare(b.title));
+
   } catch (error) {
     console.error('Error analyzing feedback:', error);
     throw error;
@@ -239,7 +269,7 @@ async function analyzeConversation(conversation) {
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4-1106-preview",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
@@ -250,7 +280,7 @@ async function analyzeConversation(conversation) {
           content: `${prompt}\n\nConversation:\n${conversation}`
         }
       ],
-      temperature: 0.7,
+      temperature: 0.3,
       response_format: { type: "json_object" }
     });
 
