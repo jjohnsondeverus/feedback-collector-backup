@@ -8,6 +8,7 @@ class OpenAIService {
   }
 
   async analyzeFeedback(messages) {
+    let response;
     try {
       console.log('\n=== Starting OpenAI Analysis ===');
       console.log('Total messages:', messages.length);
@@ -33,7 +34,7 @@ class OpenAIService {
         });
       });
 
-      const response = await this.openai.chat.completions.create({
+      response = await this.openai.chat.completions.create({
         model: process.env.OPENAI_MODEL || "gpt-4o-2024-11-20",
         messages: [
           {
@@ -113,11 +114,17 @@ class OpenAIService {
       if (error.message.includes('JSON')) {
         console.error('JSON Parse Error Details:', {
           error: error.message,
-          responsePreview: response?.choices[0]?.message?.content?.slice(0, 200)
+          responseContent: response?.choices?.[0]?.message?.content,
+          responsePreview: response?.choices?.[0]?.message?.content?.slice(0, 200)
         });
       }
-      if (error.message.includes('JSON')) {
-        throw new Error('Failed to process feedback. Please try again.');
+      // Provide more specific error messages
+      if (!response) {
+        throw new Error('Failed to get response from OpenAI. Please try again.');
+      } else if (!response.choices?.[0]?.message?.content) {
+        throw new Error('Invalid response format from OpenAI. Please try again.');
+      } else if (error.message.includes('JSON')) {
+        throw new Error('Failed to parse OpenAI response. Please try again.');
       }
       throw error;
     }
