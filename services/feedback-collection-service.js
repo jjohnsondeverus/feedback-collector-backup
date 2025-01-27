@@ -81,17 +81,33 @@ class FeedbackCollectionService {
     }
     
     // Function to check for duplicate issues
-    const checkForDuplicate = async (summary) => {
+    const checkForDuplicate = async (summary, item) => {
       try {
         const jql = `project = "${projectKey}" AND created >= -30d`;
         const results = await this.jira.searchJira(jql);
-        const threshold = parseFloat(process.env.DUPLICATE_SIMILARITY_THRESHOLD || 0.5);
+        const threshold = parseFloat(process.env.DUPLICATE_SIMILARITY_THRESHOLD || 0.3);
         
         // Check each issue for similarity
         for (const issue of results.issues) {
-          const similarity = this._calculateSimilarity.bind(this)(summary, issue.fields.summary);
-          console.log(`Comparing "${summary}" with "${issue.fields.summary}": ${similarity}`);
-          if (similarity >= threshold) {
+          // Check title similarity
+          const titleSimilarity = this._calculateSimilarity(summary, issue.fields.summary);
+          
+          // Check content similarity
+          const currentContent = `${item.user_impact} ${item.current_behavior} ${item.expected_behavior}`.toLowerCase();
+          const existingContent = issue.fields.description ? issue.fields.description.toLowerCase() : '';
+          const contentSimilarity = this._calculateSimilarity(currentContent, existingContent);
+          
+          // Calculate overall similarity (weighted average)
+          const overallSimilarity = (titleSimilarity * 0.6) + (contentSimilarity * 0.4);
+          
+          console.log(`Comparing tickets:
+            Title: "${summary}" with "${issue.fields.summary}"
+            Title Similarity: ${titleSimilarity}
+            Content Similarity: ${contentSimilarity}
+            Overall Similarity: ${overallSimilarity}
+          `);
+          
+          if (overallSimilarity >= threshold) {
             return issue;
           }
         }
@@ -108,7 +124,7 @@ class FeedbackCollectionService {
 
       try {
         // Check for duplicates
-        const duplicate = await checkForDuplicate(selected.title);
+        const duplicate = await checkForDuplicate(selected.title, item);
         if (duplicate) {
           return {
             skipped: true,
