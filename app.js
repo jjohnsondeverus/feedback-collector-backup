@@ -913,8 +913,8 @@ function createPreviewModal(items) {
               type: 'static_select',
               action_id: 'type_input',
               initial_option: {
-                text: { type: 'plain_text', text: type.charAt(0).toUpperCase() + type.slice(1) },
-                value: type
+                text: { type: 'plain_text', text: 'Bug' },
+                value: 'bug'
               },
               options: [
                 { text: { type: 'plain_text', text: 'Bug' }, value: 'bug' },
@@ -932,8 +932,8 @@ function createPreviewModal(items) {
               type: 'static_select',
               action_id: 'priority_input',
               initial_option: {
-                text: { type: 'plain_text', text: priority.charAt(0).toUpperCase() + priority.slice(1) },
-                value: priority
+                text: { type: 'plain_text', text: 'High' },
+                value: 'high'
               },
               options: [
                 { text: { type: 'plain_text', text: 'High' }, value: 'high' },
@@ -1095,14 +1095,26 @@ app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
     const ticketSummary = createdTickets.map(ticket => {
       if (ticket.skipped) {
         return `• ${ticket.title} - Skipped (Duplicate of ${ticket.duplicateKey})`;
+      } else {
+        return `• <${process.env.JIRA_HOST}/browse/${ticket.key}|${ticket.key}> - ${ticket.title}`;
       }
-      return `• <${process.env.JIRA_HOST}/browse/${ticket.key}|${ticket.key}> - ${ticket.fields.summary}`;
     }).join('\n');
+    
+    const successCount = createdTickets.filter(t => !t.skipped).length;
+    const skippedCount = createdTickets.filter(t => t.skipped).length;
+    
+    const statusMessage = [
+      `✅ Jira tickets processed:`,
+      `• Created: ${successCount}`,
+      `• Skipped: ${skippedCount}`,
+      '',
+      ticketSummary
+    ].join('\n');
     
     await client.chat.update({
       channel: dmChannel.channel.id,
       ts: message.ts,
-      text: `✅ Jira tickets processed:\n${ticketSummary}`,
+      text: statusMessage,
       mrkdwn: true
     });
   } catch (error) {

@@ -107,7 +107,8 @@ class FeedbackCollectionService {
         console.log(`Created Jira ticket: ${issue.key}`);
         return {
           ...issue,
-          skipped: false
+          skipped: false,
+          title: selected.title || item.title
         };
       } catch (error) {
         console.error('Error creating Jira ticket:', error);
