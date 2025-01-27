@@ -29,14 +29,31 @@ class FeedbackCollectionService {
     return { sessionId };
   }
 
-  async collectFeedbackFromMessages({ sessionId, channelId, messages }) {
-    const feedback = await this.openAIService.analyzeFeedback(messages);
-    await this.dynamoDBService.addFeedbackItems({
-      sessionId,
-      channelId,
-      items: feedback.feedback
-    });
-    return feedback;
+  async collectFeedbackFromMessages(messages) {
+    try {
+      if (!Array.isArray(messages)) {
+        console.error('Invalid messages format:', messages);
+        throw new Error('Invalid messages format provided');
+      }
+
+      console.log(`Processing ${messages.length} messages...`);
+      const feedback = await this.openAIService.analyzeFeedback(messages);
+      
+      if (!Array.isArray(feedback)) {
+        console.error('Invalid feedback format:', feedback);
+        throw new Error('Invalid feedback format received');
+      }
+
+      console.log(`Received ${feedback.length} feedback items`);
+      return feedback;
+
+    } catch (error) {
+      console.error('Error in collectFeedbackFromMessages:', {
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
   }
 
   async previewFeedbackItems({ sessionId, channelId }) {
@@ -58,8 +75,9 @@ class FeedbackCollectionService {
   }
 
   async createJiraTickets(selectedItems, projectKey) {
-    if (!selectedItems || selectedItems.length === 0) {
-      throw new Error('No items selected for ticket creation');
+    if (!Array.isArray(selectedItems)) {
+      console.error('Invalid selectedItems format:', selectedItems);
+      throw new Error('Invalid selectedItems format provided');
     }
 
     if (!selectedItems[0].sessionId) {

@@ -888,154 +888,65 @@ app.action('create_tickets', async ({ ack, body, client }) => {
   console.log('⚡️ Bolt app is running!');
 })();
 
-async function handleFeedbackCollection(client, userId, messageTs, startDate, endDate, sessionId, targetChannel) {
+async function handleFeedbackCollection(messages, client, body) {
   try {
+    if (!Array.isArray(messages)) {
+      console.error('Invalid messages format in handleFeedbackCollection:', messages);
+      throw new Error('Invalid messages format');
+    }
+
+    const service = new FeedbackCollectionService(null, { slackClient: client });
+    const feedback = await service.collectFeedbackFromMessages(messages);
+    
+    if (!Array.isArray(feedback)) {
+      console.error('Invalid feedback format received:', feedback);
+      throw new Error('Invalid feedback format');
+    }
+
+    console.log('Preparing feedback preview for', feedback.length, 'items');
+    
+    // Create the modal view
+    const blocks = createFeedbackPreviewBlocks(feedback);
+    if (!Array.isArray(blocks)) {
+      console.error('Invalid blocks format:', blocks);
+      throw new Error('Error creating preview blocks');
+    }
+
+    // Store feedback data for this session
+    const sessionId = generateId();
+    feedbackStorage.set(sessionId, feedback);
+    
     try {
-      // Update progress message in user's DM
-      await client.chat.update({
-        channel: userId,
-        ts: messageTs,
-        text: "📥 Fetching messages...\n0% complete"
-      });
-
-      const messages = await getMessagesInDateRange(client, targetChannel, startDate, endDate);
-
-      // Process messages in batches with progress updates
-      const totalMessages = messages.length;
-      const batchSize = 50;
-      const batches = Math.ceil(totalMessages / batchSize);
-
-      for (let i = 0; i < batches; i++) {
-        const start = i * batchSize;
-        const end = Math.min(start + batchSize, totalMessages);
-        const batch = messages.slice(start, end);
-        
-        await client.chat.update({
-          channel: userId,
-          ts: messageTs,
-          text: `🤖 Analyzing conversation...\n${Math.round((i + 1) / batches * 100)}% complete\n` +
-                `Processed ${end} of ${totalMessages} messages`
-        });
-
-        const service = new FeedbackCollectionService(null, { slackClient: client });
-        await service.collectFeedbackFromMessages({
-          sessionId,
-          channelId: targetChannel,
-          messages: batch
-        });
-      }
-
-      // Show completion message with review button
-      await client.chat.update({
-        channel: userId,
-        ts: messageTs,
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: `✅ Generated feedback items from <#${targetChannel}>. Click below to review:`
-            }
+      await client.views.open({
+        trigger_id: body.trigger_id,
+        view: {
+          type: 'modal',
+          callback_id: 'feedback_preview_modal',
+          title: {
+            type: 'plain_text',
+            text: 'Feedback Preview'
           },
-          {
-            type: "actions",
-            elements: [
-              {
-                type: "button",
-                text: {
-                  type: "plain_text",
-                  text: "Review Feedback Items"
-                },
-                action_id: "review_feedback",
-                value: JSON.stringify({ sessionId })
-              }
-            ]
+          blocks: blocks,
+          private_metadata: sessionId,
+          submit: {
+            type: 'plain_text',
+            text: 'Create Tickets'
           }
-        ],
-        text: "Feedback collection complete" // Fallback text
+        }
       });
-
     } catch (error) {
-      // Handle specific errors with user-friendly messages
-      let errorMessage = "An error occurred during processing.\n\n";
-      let suggestion = "";
-      
-      if (error.message.includes("rate_limited")) {
-        suggestion = "• Wait a few minutes and try again\n" +
-                    "• Try processing a smaller date range";
-      } else if (error.message.includes("not_in_channel")) {
-        suggestion = "• Invite the bot to the channel first\n" +
-                    "• Verify the bot has proper channel access";
-      } else {
-        suggestion = "• Try with a smaller date range\n" +
-                    "• Check if the channels are accessible";
-      }
-
-      await client.chat.update({
-        channel: userId,
-        ts: messageTs,
-        text: `❌ ${errorMessage}\nError: ${error.message}\n\nTry:\n${suggestion}`
+      console.error('Error opening modal:', {
+        error: error.message,
+        stack: error.stack,
+        blocks: blocks?.length
       });
+      throw error;
     }
   } catch (error) {
-    console.error('Error updating progress:', error);
-    await client.chat.postMessage({
-      channel: userId,
-      text: "❌ Error processing feedback. Please try again."
-    });
+    console.error('Error in handleFeedbackCollection:', error);
+    throw error;
   }
 }
-
-app.view('collect_feedback_modal', async ({ ack, body, view, client }) => {
-  try {
-    // Get values from the modal
-    const channelId = view.state.values.channel_select.channel_selected.selected_conversation;
-    const start = view.state.values.startDate.datepicker.selected_date;
-    const end = view.state.values.endDate.datepicker.selected_date;
-
-    await ack();
-
-    console.log('Selected channel:', channelId);
-    console.log('Date range:', start, 'to', end);
-
-    // Create a session ID
-    const sessionId = `SESSION#${Date.now()}`;
-
-    // Open DM channel first
-    const dmChannel = await client.conversations.open({
-      users: body.user.id
-    });
-
-    // Send initial progress message
-    const message = await client.chat.postMessage({
-      channel: dmChannel.channel.id,
-      text: "🔄 Starting feedback collection..."
-    });
-
-    // Start the feedback collection process
-    await handleFeedbackCollection(
-      client,
-      dmChannel.channel.id,
-      message.ts,
-      start,
-      end,
-      sessionId,
-      channelId  // Make sure we're passing the channel ID here
-    );
-  } catch (error) {
-    console.error('Error in collect_feedback_modal:', error);
-    console.error('Error details:', JSON.stringify(error.data || {}, null, 2));
-    
-    // Notify user of error
-    const dmChannel = await client.conversations.open({
-      users: body.user.id
-    });
-    await client.chat.postMessage({
-      channel: dmChannel.channel.id,
-      text: `❌ Error collecting feedback: ${error.message}`
-    });
-  }
-});
 
 // Create the preview modal view
 function createPreviewModal(items) {
