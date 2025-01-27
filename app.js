@@ -1094,7 +1094,7 @@ app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
     // Update with completion message
     const ticketSummary = createdTickets.map(ticket => {
       if (ticket.skipped) {
-        return `• ${ticket.title} - Skipped (Duplicate of ${ticket.duplicateKey})`;
+        return `• ${ticket.title} - Skipped (Duplicate of <${process.env.JIRA_HOST}/browse/${ticket.duplicateKey}|${ticket.duplicateKey}>)`;
       } else {
         return `• <${process.env.JIRA_HOST}/browse/${ticket.key}|${ticket.key}> - ${ticket.title}`;
       }
@@ -1104,9 +1104,9 @@ app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
     const skippedCount = createdTickets.filter(t => t.skipped).length;
     
     const statusMessage = [
-      `✅ Jira tickets processed:`,
-      `• Created: ${successCount}`,
-      `• Skipped: ${skippedCount}`,
+      `✅ *Jira tickets processed:*`,
+      `• *Created:* ${successCount}`,
+      `• *Skipped:* ${skippedCount}`,
       '',
       ticketSummary
     ].join('\n');
@@ -1115,7 +1115,8 @@ app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
       channel: dmChannel.channel.id,
       ts: message.ts,
       text: statusMessage,
-      mrkdwn: true
+      mrkdwn: true,
+      unfurl_links: false  // Prevent Slack from expanding the links into previews
     });
   } catch (error) {
     console.error('Error creating tickets:', error);
