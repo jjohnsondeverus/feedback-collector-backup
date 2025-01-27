@@ -499,7 +499,7 @@ async function parseChannels(client, channelInput) {
       let channelId = name;
       if (!name.startsWith('C')) { // If it's not already a channel ID
         const result = await client.conversations.list({
-          types: 'public_channel,private_channel,mpim',
+          types: 'public_channel,private_channel',
           exclude_archived: true,
           limit: 1000  // Increase limit to get all channels
         });
@@ -625,9 +625,7 @@ app.action('create_tickets', async ({ ack, body, client }) => {
                 text: 'Select a channel'
               },
               filter: {
-                include: ['public', 'private'],
-                exclude_bot_users: true,
-                exclude_archived: true
+                include: ['public_channel', 'private_channel']
               },
               action_id: 'channel_selected'
             }
