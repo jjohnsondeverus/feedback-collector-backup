@@ -67,12 +67,36 @@ class FeedbackCollectionService {
       throw new Error('No feedback items found for this session');
     }
     
+    // Function to calculate similarity between two strings
+    _calculateSimilarity(str1, str2) {
+      const s1 = str1.toLowerCase().replace(/[^a-z0-9\s]/g, '');
+      const s2 = str2.toLowerCase().replace(/[^a-z0-9\s]/g, '');
+      
+      const words1 = new Set(s1.split(/\s+/));
+      const words2 = new Set(s2.split(/\s+/));
+      
+      const intersection = new Set([...words1].filter(x => words2.has(x)));
+      const union = new Set([...words1, ...words2]);
+      
+      return intersection.size / union.size;
+    }
+
     // Function to check for duplicate issues
     const checkForDuplicate = async (summary) => {
       try {
-        const jql = `project = "${projectKey}" AND summary ~ "${summary.replace(/"/g, '\\"')}" AND created >= -30d`;
+        const jql = `project = "${projectKey}" AND created >= -30d`;
         const results = await this.jira.searchJira(jql);
-        return results.issues.length > 0 ? results.issues[0] : null;
+        const threshold = parseFloat(process.env.DUPLICATE_SIMILARITY_THRESHOLD || 0.5);
+        
+        // Check each issue for similarity
+        for (const issue of results.issues) {
+          const similarity = this._calculateSimilarity(summary, issue.fields.summary);
+          console.log(`Comparing "${summary}" with "${issue.fields.summary}": ${similarity}`);
+          if (similarity >= threshold) {
+            return issue;
+          }
+        }
+        return null;
       } catch (error) {
         console.error('Error checking for duplicates:', error);
         return null;

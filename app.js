@@ -1094,9 +1094,9 @@ app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
     // Update with completion message
     const ticketSummary = createdTickets.map(ticket => {
       if (ticket.skipped) {
-        return `• ${ticket.title} - Skipped (Duplicate of <${process.env.JIRA_HOST}/browse/${ticket.duplicateKey}|${ticket.duplicateKey}>)`;
+        return `• ${ticket.title} - Skipped (Duplicate of <https://${process.env.JIRA_HOST}/browse/${ticket.duplicateKey}|${ticket.duplicateKey}>)`;
       } else {
-        return `• <${process.env.JIRA_HOST}/browse/${ticket.key}|${ticket.key}> - ${ticket.title}`;
+        return `• <https://${process.env.JIRA_HOST}/browse/${ticket.key}|${ticket.key}> - ${ticket.title}`;
       }
     }).join('\n');
     
