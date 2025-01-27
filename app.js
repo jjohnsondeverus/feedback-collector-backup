@@ -885,18 +885,35 @@ app.action('create_tickets', async ({ ack, body, client }) => {
 // Handle the collect feedback modal submission
 app.view('collect_feedback_modal', async ({ ack, body, view, client }) => {
   try {
+    // Acknowledge immediately to prevent trigger_id expiration
+    await ack();
+
+    // Open a loading modal first
+    const dmChannel = await client.conversations.open({
+      users: body.user.id
+    });
+
+    const loadingMessage = await client.chat.postMessage({
+      channel: dmChannel.channel.id,
+      text: "🔄 Processing feedback and analyzing messages..."
+    });
+
     // Get values from the modal
     const channelId = view.state.values.channel_select.channel_selected.selected_conversation;
     const startDate = view.state.values.startDate.datepicker.selected_date;
     const endDate = view.state.values.endDate.datepicker.selected_date;
-
-    await ack();
 
     console.log('Selected channel:', channelId);
     console.log('Date range:', startDate, 'to', endDate);
 
     // Fetch messages
     const messages = await getMessagesInDateRange(client, channelId, startDate, endDate);
+    await client.chat.update({
+      channel: dmChannel.channel.id,
+      ts: loadingMessage.ts,
+      text: `📥 Fetched ${messages.length} messages, analyzing...`
+    });
+
     console.log(`Fetched ${messages.length} messages`);
 
     // Process the messages
@@ -915,6 +932,8 @@ app.view('collect_feedback_modal', async ({ ack, body, view, client }) => {
       errorMessage += "Rate limit exceeded. Please wait a few minutes and try again.";
     } else if (error.message.includes('not_in_channel')) {
       errorMessage += "Please invite the bot to the channel first using /invite @YourBotName";
+    } else if (error.message.includes('expired_trigger_id')) {
+      errorMessage += "Processing took too long. Please try again with a smaller date range.";
     } else {
       errorMessage += error.message;
     }
@@ -1035,10 +1054,7 @@ async function handleFeedbackCollection(messages, client, body) {
     console.log(`Starting feedback collection for ${messages.length} messages`);
 
     const service = new FeedbackCollectionService(null, { slackClient: client });
-    console.log('Created FeedbackCollectionService');
-
     const feedback = await service.collectFeedbackFromMessages(messages);
-    console.log(`Collected ${feedback?.length || 0} feedback items`);
     
     if (!Array.isArray(feedback)) {
       console.error('Invalid feedback format received:', feedback);
@@ -1049,7 +1065,6 @@ async function handleFeedbackCollection(messages, client, body) {
     
     // Create the modal view
     const blocks = createFeedbackPreviewBlocks(feedback);
-    console.log(`Created ${blocks?.length || 0} preview blocks`);
 
     if (!Array.isArray(blocks)) {
       console.error('Invalid blocks format:', blocks);
@@ -1059,10 +1074,8 @@ async function handleFeedbackCollection(messages, client, body) {
     // Store feedback data for this session
     const sessionId = generateId();
     feedbackStorage.set(sessionId, feedback);
-    console.log(`Stored feedback with session ID: ${sessionId}`);
     
     try {
-      console.log('Opening preview modal...');
       await client.views.open({
         trigger_id: body.trigger_id,
         view: {
@@ -1080,13 +1093,11 @@ async function handleFeedbackCollection(messages, client, body) {
           }
         }
       });
-      console.log('Preview modal opened successfully');
     } catch (error) {
       console.error('Error opening modal:', {
         error: error.message,
         stack: error.stack,
-        blocks: blocks?.length,
-        trigger_id: body.trigger_id
+        blocks: blocks?.length
       });
       throw error;
     }
