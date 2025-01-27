@@ -16,27 +16,30 @@ class OpenAIService extends BaseLLMService {
         messages: [
           {
             role: "system",
-            content: `You are a product feedback analyzer. Extract feedback items from conversations.
-              Format each item as:
-              {
-                "title": "Brief descriptive title",
-                "summary": "Detailed explanation",
-                "type": "bug|improvement|feature",
-                "priority": "high|medium|low",
-                "user_impact": "How this affects users",
-                "current_behavior": "What currently happens",
-                "expected_behavior": "What should happen",
-                "additional_context": "Other relevant details"
-              }
-              Return a JSON object with a 'feedback' array containing these items.`
+            content: `You are a software development project manager analyzing potential issues.
+              For each issue provided:
+              1. Validate it meets these criteria:
+                 - Clear technical problem or feature request
+                 - Specific user/business impact
+                 - Actionable solution possible
+              2. If valid, extract:
+                 - Clear title
+                 - Issue type
+                 - Priority based on impact
+                 - Current and expected behavior
+              3. If invalid, exclude it
+              
+              Return array of valid issues only.
+              Process ALL issues independently.
+              Do not combine or skip any valid issues.`
           },
           {
             role: "user",
             content: JSON.stringify(messages)
           }
         ],
-        temperature: 0.1,
-        response_format: { type: "json_object" }
+        temperature: 0,
+        response_format: { type: "json" }
       });
 
       const result = JSON.parse(response.choices[0].message.content);
