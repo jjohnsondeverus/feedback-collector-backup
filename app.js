@@ -625,7 +625,7 @@ app.action('create_tickets', async ({ ack, body, client }) => {
                 text: 'Select a channel'
               },
               filter: {
-                include: ['im', 'mpim', 'private', 'public']
+                include: ['private_channel', 'public_channel']
               },
               action_id: 'channel_selected'
             }
@@ -772,10 +772,9 @@ async function handleFeedbackCollection(client, userId, messageTs, startDate, en
 
 app.view('collect_feedback_modal', async ({ ack, body, view, client }) => {
   try {
-    const { channels, startDate, endDate } = view.state.values;
-    const channelId = channels.channel_select.selected_channel;
-    const start = startDate.datepicker.selected_date;
-    const end = endDate.datepicker.selected_date;
+    const channelId = view.state.values.channel_select.channel_selected.selected_conversation;
+    const start = view.state.values.startDate.datepicker.selected_date;
+    const end = view.state.values.endDate.datepicker.selected_date;
 
     await ack();
     
