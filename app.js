@@ -205,6 +205,41 @@ function preprocessMessages(messages) {
   };
 }
 
+// Add helper to identify potential issues
+function identifyPotentialIssues(messages) {
+  const issues = new Map();
+  const issueIndicators = [
+    'error', 'bug', 'issue', 'problem', 'broken', 'wrong',
+    'need', 'should', 'must', 'require', 'missing',
+    'can\'t', 'cannot', 'unable', 'fail', 'failing'
+  ];
+
+  // First pass: Find thread starters that indicate issues
+  Object.entries(messages.threads)
+    .sort(([, a], [, b]) => a.timestamp.localeCompare(b.timestamp))
+    .forEach(([threadKey, thread]) => {
+      const mainMessage = thread.mainMessage?.toLowerCase() || '';
+      
+      // Check if main message indicates an issue
+      const hasIssueIndicator = issueIndicators.some(indicator => 
+        mainMessage.includes(indicator)
+      );
+      
+      if (hasIssueIndicator) {
+        const key = `${thread.timestamp}_${mainMessage.slice(0, 50)}`;
+        issues.set(key, {
+          mainMessage: thread.mainMessage,
+          timestamp: thread.timestamp,
+          messages: thread.messages,
+          components: Array.from(thread.topics),
+          keywords: Array.from(thread.keywords)
+        });
+      }
+    });
+
+  return Array.from(issues.values());
+}
+
 function createAnalysisPrompt(messages) {
   return `Analyze these Slack messages and identify distinct issues that need tickets.
   
@@ -250,67 +285,62 @@ function createAnalysisPrompt(messages) {
 
 async function analyzeFeedback(messages) {
   try {
-    // Preprocess messages for consistency
     const processedThreads = preprocessMessages(messages);
     
-    // Log analysis inputs for debugging
-    console.log('Processing threads:', Object.keys(processedThreads.threads).length);
-    Object.entries(processedThreads.threads).forEach(([threadKey, data]) => {
-      console.log(`Thread ${threadKey}:`, {
-        messages: data.messages.length,
-        keywords: Array.from(data.keywords)
+    // First identify potential issues deterministically
+    const potentialIssues = identifyPotentialIssues(processedThreads);
+    
+    console.log('Potential issues identified:', potentialIssues.length);
+    potentialIssues.forEach((issue, index) => {
+      console.log(`Issue ${index + 1}:`, {
+        message: issue.mainMessage?.slice(0, 100),
+        components: issue.components,
+        keywords: issue.keywords
       });
     });
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-2024-11-20',
       messages: [
         { 
           role: 'system', 
-          content: `You are a software development project manager skilled at identifying issues that need tracking.
-            Follow these rules strictly:
-            1. Only identify issues with clear technical impact
-            2. Require specific user/business impact
-            3. Must have actionable expected behavior
-            4. Ignore resolved or unclear issues
-            5. Process threads chronologically
-            6. Return consistent results for same input`
-        },
-        { 
-          role: 'user', 
-          content: createAnalysisPrompt(messages) 
+          content: `You are a software development project manager analyzing potential issues.
+            For each issue provided:
+            1. Validate it meets these criteria:
+               - Clear technical problem or feature request
+               - Specific user/business impact
+               - Actionable solution possible
+            2. If valid, extract:
+               - Clear title
+               - Issue type
+               - Priority based on impact
+               - Current and expected behavior
+            3. If invalid, exclude it
+            
+            Return array of valid issues only.
+            Process ALL issues independently.
+            Do not combine or skip any valid issues.`
         },
         {
           role: 'user',
-          content: JSON.stringify(processedThreads.threads)
+          content: JSON.stringify(potentialIssues)
         }
       ],
-      temperature: 0.2,
+      temperature: 0,  // Use 0 for maximum consistency
       max_tokens: 4096,
-      response_format: { type: "json" },
-      top_p: 1,
-      frequency_penalty: 0,
-      presence_penalty: 0
+      response_format: { type: "json" }
     });
 
-    // Validate and normalize the response
     const response = JSON.parse(completion.choices[0].message.content);
-    // Add validation
-    if (!Array.isArray(response)) {
-      throw new Error('Expected array of issues');
-    }
     
-    // Validate each issue has required fields
-    const validatedIssues = response.filter(issue => {
-      const required = ['title', 'type', 'priority', 'user_impact', 'current_behavior', 'expected_behavior'];
-      return required.every(field => issue[field] && issue[field].trim().length > 0);
+    // Log analysis results
+    console.log('Analysis results:', {
+      potentialIssues: potentialIssues.length,
+      validatedIssues: response.length,
+      excluded: potentialIssues.length - response.length
     });
     
-    console.log(`Found ${validatedIssues.length} valid issues out of ${response.length} total`);
-    
-    // Sort for consistency
-    return validatedIssues.sort((a, b) => a.title.localeCompare(b.title));
-
+    return response.sort((a, b) => a.title.localeCompare(b.title));
   } catch (error) {
     console.error('Error analyzing feedback:', error);
     throw error;
@@ -357,7 +387,7 @@ async function analyzeConversation(conversation) {
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4o-2024-11-20",
       messages: [
         {
           role: "system",

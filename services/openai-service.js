@@ -10,7 +10,7 @@ class OpenAIService {
   async analyzeFeedback(messages) {
     try {
       const response = await this.openai.chat.completions.create({
-        model: process.env.OPENAI_MODEL || "gpt-4",
+        model: process.env.OPENAI_MODEL || "gpt-4o-2024-11-20",
         messages: [
           {
             role: "system",
