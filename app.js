@@ -124,53 +124,54 @@ async function checkJiraUser(email) {
   }
 }
 
+// Add this function near other helper functions
+function createAnalysisPrompt(messages) {
+  return `Analyze these Slack messages and identify distinct issues that need tickets. 
+
+Guidelines for identifying issues:
+1. Must be actionable problems or feature requests
+2. Must have clear impact or business value
+3. Must be specific enough to implement
+4. Ignore casual discussions or resolved issues
+5. Combine related mentions of the same issue
+
+For each issue, extract:
+- Title: Clear, concise description
+- Type: Bug, Feature, or Improvement
+- Priority: Based on user impact and urgency
+- User Impact: How it affects users/business
+- Current Behavior: What's happening now
+- Expected Behavior: What should happen
+
+Format each issue as a JSON object with these exact fields.
+Return an array of these objects.`;
+}
+
 // Update the analyzeFeedback function to include reporter info
 async function analyzeFeedback(messages) {
   try {
-    // Group messages by thread to maintain context
-    const messagesByThread = messages.reduce((acc, msg) => {
-      const threadKey = msg.thread_ts || msg.ts;
-      if (!acc[threadKey]) {
-        acc[threadKey] = [];
-      }
-      acc[threadKey].push(msg);
-      return acc;
-    }, {});
-
-    // Process each thread
-    const processedMessages = Object.values(messagesByThread).map(threadMsgs => {
-      // Find the first message in thread (original post)
-      const originalMsg = threadMsgs[0];
-      return {
-        text: threadMsgs.map(msg => msg.text || '').join('\n'),
-        reporter: originalMsg.user_info?.name || 'Unknown User',
-        reporter_email: originalMsg.user_info?.email || null
-      };
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { 
+          role: 'system', 
+          content: 'You are a software development project manager skilled at identifying issues that need tracking.' 
+        },
+        { 
+          role: 'user', 
+          content: createAnalysisPrompt(messages) 
+        },
+        {
+          role: 'user',
+          content: JSON.stringify(messages)
+        }
+      ],
+      temperature: 0.1,  // Lower temperature for more consistent output
+      max_tokens: 4000,  // Increased token limit for more comprehensive analysis
+      response_format: { type: "json" }  // Enforce JSON response format
     });
 
-    const conversation = processedMessages
-      .map(msg => `[${msg.reporter}]: ${msg.text}`)
-      .join('\n\n');
-
-    // Only analyze if there's actual content
-    if (conversation.trim().length === 0) {
-      return [];
-    }
-
-    console.log('Analyzing conversation:', conversation);
-    const analysis = await analyzeConversation(conversation);
-    console.log('GPT Response:', JSON.stringify(analysis));
-    
-    // Extract and enhance the feedback array with reporter info
-    const feedbackItems = (analysis.feedback || []).map((item, index) => ({
-      ...item,
-      reporter: processedMessages[index]?.reporter || 'Unknown User',
-      reporter_email: processedMessages[index]?.reporter_email || null
-    }));
-
-    console.log('Parsed feedback:', JSON.stringify(feedbackItems));
-    return feedbackItems;
-
+    return JSON.parse(completion.choices[0].message.content);
   } catch (error) {
     console.error('Error analyzing feedback:', error);
     throw error;
