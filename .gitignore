@@ -55,3 +55,6 @@ docker-compose.override.yml
 
 # New additions
 !.env.example
+
+package-lock.json
+package.json
