@@ -124,65 +124,81 @@ async function checkJiraUser(email) {
   }
 }
 
-// Add this function near other helper functions
-function createAnalysisPrompt(messages) {
-  return `Analyze these Slack messages and identify distinct issues that need tickets.
-  Follow these steps exactly:
-  
-  1. First, identify all mentions of:
-     - Technical problems or bugs
-     - Feature requests
-     - Integration issues
-     - Security concerns
-     - Performance issues
-  
-  2. For each identified issue:
-     - Combine multiple mentions of the same issue
-     - Ignore if it's marked as resolved
-     - Verify it has clear business impact
-     - Confirm it's specific enough to implement
-  
-  3. For each remaining issue, extract exactly:
-  - Title: Clear, concise description
-  - Type: Bug, Feature, or Improvement
-  - Priority: Based on user impact and urgency
-  - User Impact: How it affects users/business
-  - Current Behavior: What's happening now
-  - Expected Behavior: What should happen
-  
-  4. Format each issue consistently:
-     - Title should be a clear problem statement
-     - Type should match the issue category
-     - Priority should reflect business impact
-     - Impact should focus on user/business effects
-     - Current/Expected behavior should be specific
-  
-  Return a JSON array where each object has exactly these fields:
-  {
-    "title": "string",
-    "type": "string",
-    "priority": "string",
-    "user_impact": "string",
-    "current_behavior": "string",
-    "expected_behavior": "string"
-  }`;
-}
-
-// Update the analyzeFeedback function to include reporter info
-async function analyzeFeedback(messages) {
-  try {
-    // First, group messages by thread to maintain context
-    const messagesByThread = messages.reduce((acc, msg) => {
+// Add helper functions for message preprocessing
+function preprocessMessages(messages) {
+  return messages
+    // Sort messages by timestamp
+    .sort((a, b) => (a.ts || '0') < (b.ts || '0') ? -1 : 1)
+    // Group by thread and clean text
+    .reduce((acc, msg) => {
       const threadKey = msg.thread_ts || msg.ts;
-      if (!acc[threadKey]) acc[threadKey] = [];
-      acc[threadKey].push(msg);
+      if (!acc[threadKey]) {
+        acc[threadKey] = {
+          messages: [],
+          keywords: new Set()
+        };
+      }
+      
+      // Extract and normalize keywords
+      const keywords = msg.text.toLowerCase()
+        .match(/\b(error|bug|issue|problem|feature|request|improvement|fail|broken)\b/g) || [];
+      keywords.forEach(k => acc[threadKey].keywords.add(k));
+      
+      acc[threadKey].messages.push({
+        text: msg.text,
+        user: msg.user,
+        ts: msg.ts
+      });
+      
       return acc;
     }, {});
+}
 
-    // Process threads in a consistent order
-    const orderedThreads = Object.entries(messagesByThread)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([_, msgs]) => msgs);
+function createAnalysisPrompt(messages) {
+  return `Analyze these Slack messages and identify distinct issues that need tickets.
+  
+  Required Analysis Steps:
+  1. For each conversation thread:
+     - Look for specific issue indicators (error, bug, problem, request)
+     - Identify if the thread describes a distinct technical issue
+     - Check if the issue was resolved in the thread
+  
+  2. For each identified issue, verify it has ALL of:
+     - Clear technical problem or request
+     - Specific impact on users/business
+     - Actionable solution or expectation
+  
+  3. Combine duplicate issues by matching:
+     - Similar problem descriptions
+     - Related error messages
+     - Connected functionality
+  
+  4. For each final issue, extract EXACTLY:
+     title: One-line summary of the issue
+     type: "Bug" | "Feature" | "Improvement"
+     priority: "High" | "Medium" | "Low"
+     user_impact: Specific business/user effect
+     current_behavior: Precise current state
+     expected_behavior: Clear desired outcome
+  
+  Return array of issues sorted by title.
+  Each issue must have all fields.
+  Do not include partially described issues.`;
+}
+
+async function analyzeFeedback(messages) {
+  try {
+    // Preprocess messages for consistency
+    const processedThreads = preprocessMessages(messages);
+    
+    // Log analysis inputs for debugging
+    console.log('Processing threads:', Object.keys(processedThreads).length);
+    Object.entries(processedThreads).forEach(([threadKey, data]) => {
+      console.log(`Thread ${threadKey}:`, {
+        messages: data.messages.length,
+        keywords: Array.from(data.keywords)
+      });
+    });
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
@@ -191,11 +207,12 @@ async function analyzeFeedback(messages) {
           role: 'system', 
           content: `You are a software development project manager skilled at identifying issues that need tracking.
             Follow these rules strictly:
-            1. Only identify clear, actionable technical issues
-            2. Ignore discussions about resolved issues
-            3. Process messages in chronological order
-            4. Combine duplicate mentions of the same issue
-            5. Return exactly the same issues given the same input`
+            1. Only identify issues with clear technical impact
+            2. Require specific user/business impact
+            3. Must have actionable expected behavior
+            4. Ignore resolved or unclear issues
+            5. Process threads chronologically
+            6. Return consistent results for same input`
         },
         { 
           role: 'user', 
@@ -203,25 +220,34 @@ async function analyzeFeedback(messages) {
         },
         {
           role: 'user',
-          content: JSON.stringify(orderedThreads)
+          content: JSON.stringify(processedThreads)
         }
       ],
-      temperature: 0.2,  // Set to 0.2 for maximum consistency
+      temperature: 0.2,
       max_tokens: 4096,
       response_format: { type: "json" },
-      top_p: 1,        // Use greedy sampling
+      top_p: 1,
       frequency_penalty: 0,
       presence_penalty: 0
     });
 
     // Validate and normalize the response
     const response = JSON.parse(completion.choices[0].message.content);
+    // Add validation
     if (!Array.isArray(response)) {
-      throw new Error('Expected array of issues in response');
+      throw new Error('Expected array of issues');
     }
-
-    // Sort issues by title for consistency
-    return response.sort((a, b) => a.title.localeCompare(b.title));
+    
+    // Validate each issue has required fields
+    const validatedIssues = response.filter(issue => {
+      const required = ['title', 'type', 'priority', 'user_impact', 'current_behavior', 'expected_behavior'];
+      return required.every(field => issue[field] && issue[field].trim().length > 0);
+    });
+    
+    console.log(`Found ${validatedIssues.length} valid issues out of ${response.length} total`);
+    
+    // Sort for consistency
+    return validatedIssues.sort((a, b) => a.title.localeCompare(b.title));
 
   } catch (error) {
     console.error('Error analyzing feedback:', error);
