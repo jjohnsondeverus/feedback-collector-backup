@@ -926,6 +926,99 @@ app.view('collect_feedback_modal', async ({ ack, body, view, client }) => {
   }
 });
 
+// Handle the preview modal submission
+app.view('feedback_preview_modal', async ({ ack, body, view, client }) => {
+  try {
+    await ack();
+    
+    const sessionId = view.private_metadata;
+    const selectedItems = [];
+    const values = view.state.values;
+    
+    // Get the project key
+    const projectKey = values.jira_project?.project_key?.value?.toUpperCase();
+    if (!projectKey) {
+      throw new Error('Please enter a Jira Project Key');
+    }
+    
+    // Validate project key format
+    if (!/^[A-Z][A-Z0-9_]+$/.test(projectKey)) {
+      throw new Error('Invalid Jira Project Key format. Should be letters and numbers (e.g., CORE, PLAT)');
+    }
+    
+    console.log('Modal values:', JSON.stringify(values, null, 2));
+    
+    // First, find all selected items
+    const selectedIndices = new Set();
+    Object.entries(values).forEach(([blockId, blockValue]) => {
+      if (blockId.startsWith('include_') && blockValue.selected?.selected_options?.length > 0) {
+        const index = parseInt(blockValue.selected.selected_options[0].value);
+        if (!isNaN(index)) {
+          selectedIndices.add(index);
+        }
+      }
+    });
+    
+    console.log('Selected indices:', Array.from(selectedIndices));
+    
+    // Then process the selected items
+    selectedIndices.forEach(index => {
+      const item = {
+        index,
+        sessionId,
+        title: values[`edit_title_${index}`]?.title_input?.value,
+        type: values[`edit_type_${index}`]?.type_input?.selected_option?.value,
+        priority: values[`edit_priority_${index}`]?.priority_input?.selected_option?.value,
+        user_impact: values[`edit_impact_${index}`]?.impact_input?.value,
+        current_behavior: values[`edit_current_${index}`]?.current_input?.value,
+        expected_behavior: values[`edit_expected_${index}`]?.expected_input?.value
+      };
+      
+      if (item.title && item.type && item.priority) {
+        selectedItems.push(item);
+      }
+    });
+    
+    if (selectedItems.length === 0) {
+      throw new Error('Please select at least one item and fill in all required fields');
+    }
+    
+    // Create Jira tickets
+    const service = new FeedbackCollectionService(null, { slackClient: client });
+    const createdTickets = await service.createJiraTickets(selectedItems, projectKey);
+    
+    // Send results to user
+    const dmChannel = await client.conversations.open({
+      users: body.user.id
+    });
+    
+    const ticketSummary = createdTickets.map(ticket => 
+      ticket.skipped ? 
+        `• ${ticket.title} - Skipped (Duplicate of ${ticket.duplicateKey})` :
+        `• ${ticket.key} - ${ticket.title}`
+    ).join('\n');
+    
+    await client.chat.postMessage({
+      channel: dmChannel.channel.id,
+      text: [
+        `✅ Created ${createdTickets.length} Jira tickets:`,
+        ticketSummary
+      ].join('\n'),
+      mrkdwn: true
+    });
+    
+  } catch (error) {
+    console.error('Error creating tickets:', error);
+    const dmChannel = await client.conversations.open({
+      users: body.user.id
+    });
+    await client.chat.postMessage({
+      channel: dmChannel.channel.id,
+      text: `❌ Error creating tickets: ${error.message}`
+    });
+  }
+});
+
 // Start the app
 (async () => {
   await app.start(process.env.PORT || 3000);
@@ -1003,8 +1096,8 @@ async function handleFeedbackCollection(messages, client, body) {
   }
 }
 
-// Create the preview modal view
-function createPreviewModal(items) {
+// Helper functions for UI
+const createPreviewModal = (items) => {
   // Helper to ensure valid type value
   const normalizeType = (type) => {
     const validTypes = ['bug', 'feature', 'improvement'];
@@ -1175,140 +1268,200 @@ function createPreviewModal(items) {
       text: 'Cancel'
     }
   };
-}
+};
 
-// Handle the preview modal submission
-app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
-  try {
-    await ack();
-    
-    const sessionId = view.private_metadata;
-    const selectedItems = [];
-    const values = view.state.values;
-    
-    // Get the project key
-    const projectKey = values.jira_project?.project_key?.value?.toUpperCase();
-    if (!projectKey) {
-      throw new Error('Please enter a Jira Project Key');
-    }
-    
-    // Validate project key format (typically uppercase letters followed by numbers)
-    if (!/^[A-Z][A-Z0-9_]+$/.test(projectKey)) {
-      throw new Error('Invalid Jira Project Key format. Should be letters and numbers (e.g., CORE, PLAT)');
-    }
-    
-    console.log('Modal values:', JSON.stringify(values, null, 2));
-    
-    // First, find all selected items
-    const selectedIndices = new Set();
-    Object.entries(values).forEach(([blockId, blockValue]) => {
-      // Check if this block contains checkbox selections
-      const checkboxes = Object.values(blockValue)[0];
-      if (checkboxes?.type === 'checkboxes' && checkboxes.selected_options?.length > 0) {
-        // Extract the index from the selected option value
-        const index = parseInt(checkboxes.selected_options[0].value);
-        if (!isNaN(index)) {
-          selectedIndices.add(index);
+// Helper function to create preview blocks for feedback items
+const createFeedbackPreviewBlocks = (feedback) => {
+  if (!Array.isArray(feedback)) {
+    console.error('Invalid feedback format:', feedback);
+    throw new Error('Invalid feedback format');
+  }
+
+  const blocks = [];
+
+  // Add project key input
+  blocks.push(
+    {
+      type: 'input',
+      block_id: 'jira_project',
+      label: {
+        type: 'plain_text',
+        text: 'Jira Project Key'
+      },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'project_key',
+        placeholder: {
+          type: 'plain_text',
+          text: 'e.g., CORE, PLAT, etc.'
         }
       }
-    });
-    
-    console.log('Selected indices:', Array.from(selectedIndices));
-    
-    // Then process the selected items
-    selectedIndices.forEach(index => {
-      // Get the edited values for this item
-      const titleBlock = values[`edit_title_${index}`]?.title_input?.value;
-      const typeBlock = values[`edit_type_${index}`]?.type_input?.selected_option?.value;
-      const priorityBlock = values[`edit_priority_${index}`]?.priority_input?.selected_option?.value;
-      const impactBlock = values[`edit_impact_${index}`]?.impact_input?.value;
-      const currentBlock = values[`edit_current_${index}`]?.current_input?.value;
-      const expectedBlock = values[`edit_expected_${index}`]?.expected_input?.value;
-      
-      console.log(`Processing item ${index}:`, {
-        title: titleBlock,
-        type: typeBlock,
-        priority: priorityBlock
-      });
-      
-      // Only add if we have the required fields
-      if (titleBlock && typeBlock && priorityBlock) {
-        selectedItems.push({
-          index,
-          sessionId,
-          title: titleBlock,
-          type: typeBlock,
-          priority: priorityBlock,
-          user_impact: impactBlock || '',
-          current_behavior: currentBlock || '',
-          expected_behavior: expectedBlock || ''
-        });
-      } else {
-        console.log(`Missing required fields for item ${index}`);
-      }
-    });
-    
-    if (selectedItems.length === 0) {
-      if (selectedIndices.size > 0) {
-        throw new Error('Please ensure all required fields (Title, Type, Priority) are filled for selected items');
-      } else {
-        throw new Error('Please select at least one item to create tickets for');
-      }
+    },
+    {
+      type: 'divider'
     }
-    
-    console.log('Selected items:', JSON.stringify(selectedItems, null, 2));
-    
-    // Open DM channel for status updates
-    const dmChannel = await client.conversations.open({
-      users: body.user.id
-    });
-    
-    // Send processing message
-    const message = await client.chat.postMessage({
-      channel: dmChannel.channel.id,
-      text: "🎫 Creating Jira tickets..."
-    });
-    
-    // Create Jira tickets for selected items
-    const service = new FeedbackCollectionService(null, { slackClient: client });
-    const createdTickets = await service.createJiraTickets(selectedItems, projectKey);
-    
-    // Update with completion message
-    const ticketSummary = createdTickets.map(ticket => {
-      if (ticket.skipped) {
-        return `• ${ticket.title} - Skipped (Duplicate of <https://${process.env.JIRA_HOST}/browse/${ticket.duplicateKey}|${ticket.duplicateKey}>)`;
-      } else {
-        return `• <https://${process.env.JIRA_HOST}/browse/${ticket.key}|${ticket.key}> - ${ticket.title}`;
+  );
+
+  // Add each feedback item
+  feedback.forEach((item, index) => {
+    blocks.push(
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*${index + 1}. ${item.title || 'Untitled Issue'}*`
+        }
+      },
+      {
+        type: 'input',
+        block_id: `include_${index}`,
+        element: {
+          type: 'checkboxes',
+          action_id: 'selected',
+          options: [
+            {
+              text: {
+                type: 'plain_text',
+                text: 'Include'
+              },
+              value: index.toString()
+            }
+          ]
+        },
+        label: {
+          type: 'plain_text',
+          text: 'Create ticket?'
+        }
+      },
+      {
+        type: 'input',
+        block_id: `edit_title_${index}`,
+        label: {
+          type: 'plain_text',
+          text: 'Title'
+        },
+        element: {
+          type: 'plain_text_input',
+          action_id: 'title_input',
+          initial_value: item.title || ''
+        }
+      },
+      {
+        type: 'input',
+        block_id: `edit_type_${index}`,
+        label: {
+          type: 'plain_text',
+          text: 'Type'
+        },
+        element: {
+          type: 'static_select',
+          action_id: 'type_input',
+          initial_option: {
+            text: {
+              type: 'plain_text',
+              text: item.type || 'Bug'
+            },
+            value: item.type || 'bug'
+          },
+          options: [
+            {
+              text: { type: 'plain_text', text: 'Bug' },
+              value: 'bug'
+            },
+            {
+              text: { type: 'plain_text', text: 'Improvement' },
+              value: 'improvement'
+            },
+            {
+              text: { type: 'plain_text', text: 'Feature' },
+              value: 'feature'
+            }
+          ]
+        }
+      },
+      {
+        type: 'input',
+        block_id: `edit_priority_${index}`,
+        label: {
+          type: 'plain_text',
+          text: 'Priority'
+        },
+        element: {
+          type: 'static_select',
+          action_id: 'priority_input',
+          initial_option: {
+            text: {
+              type: 'plain_text',
+              text: item.priority || 'Medium'
+            },
+            value: item.priority || 'medium'
+          },
+          options: [
+            {
+              text: { type: 'plain_text', text: 'High' },
+              value: 'high'
+            },
+            {
+              text: { type: 'plain_text', text: 'Medium' },
+              value: 'medium'
+            },
+            {
+              text: { type: 'plain_text', text: 'Low' },
+              value: 'low'
+            }
+          ]
+        }
+      },
+      {
+        type: 'input',
+        block_id: `edit_impact_${index}`,
+        optional: true,
+        label: {
+          type: 'plain_text',
+          text: 'User Impact'
+        },
+        element: {
+          type: 'plain_text_input',
+          action_id: 'impact_input',
+          initial_value: item.user_impact || '',
+          multiline: true
+        }
+      },
+      {
+        type: 'input',
+        block_id: `edit_current_${index}`,
+        optional: true,
+        label: {
+          type: 'plain_text',
+          text: 'Current Behavior'
+        },
+        element: {
+          type: 'plain_text_input',
+          action_id: 'current_input',
+          initial_value: item.current_behavior || '',
+          multiline: true
+        }
+      },
+      {
+        type: 'input',
+        block_id: `edit_expected_${index}`,
+        optional: true,
+        label: {
+          type: 'plain_text',
+          text: 'Expected Behavior'
+        },
+        element: {
+          type: 'plain_text_input',
+          action_id: 'expected_input',
+          initial_value: item.expected_behavior || '',
+          multiline: true
+        }
+      },
+      {
+        type: 'divider'
       }
-    }).join('\n');
-    
-    const successCount = createdTickets.filter(t => !t.skipped).length;
-    const skippedCount = createdTickets.filter(t => t.skipped).length;
-    
-    const statusMessage = [
-      `✅ *Jira tickets processed:*`,
-      `• *Created:* ${successCount}`,
-      `• *Skipped:* ${skippedCount}`,
-      '',
-      ticketSummary
-    ].join('\n');
-    
-    await client.chat.update({
-      channel: dmChannel.channel.id,
-      ts: message.ts,
-      text: statusMessage,
-      mrkdwn: true,
-      unfurl_links: false  // Prevent Slack from expanding the links into previews
-    });
-  } catch (error) {
-    console.error('Error creating tickets:', error);
-    // Send error message to user
-    const dmChannel = await client.conversations.open({
-      users: body.user.id
-    });
-    await client.chat.postMessage({
-      channel: dmChannel.channel.id,
-      text: `❌ Error creating tickets: ${error.message}`
-    });
-  }
-});
+    );
+  });
+
+  return blocks;
+};
