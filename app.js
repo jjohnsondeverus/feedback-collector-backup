@@ -50,16 +50,31 @@ async function getMessagesInDateRange(client, channelId, startDate, endDate) {
   console.log('Date range:', startDate, 'to', endDate);
 
   try {
+    // Try to join the channel first
+    try {
+      await client.conversations.join({ channel: channelId });
+      console.log('Successfully joined channel');
+    } catch (joinError) {
+      // Ignore if we're already in the channel or if it's private
+      if (joinError.data?.error !== 'already_in_channel' && 
+          joinError.data?.error !== 'is_private' && 
+          joinError.data?.error !== 'method_not_supported_for_channel_type') {
+        console.log('Join error:', joinError.data?.error);
+        throw joinError;
+      }
+    }
+
     const messages = [];
     let cursor;
 
     do {
+      // Use conversations.history for both public and private channels
       const result = await client.conversations.history({
         channel: channelId,
         limit: 100,
         cursor: cursor,
-        oldest: new Date(startDate).getTime() / 1000,
-        latest: new Date(endDate).getTime() / 1000
+        oldest: Math.floor(new Date(startDate).getTime() / 1000),
+        latest: Math.floor(new Date(endDate).setHours(23, 59, 59, 999) / 1000)
       });
 
       console.log(`Fetched ${result.messages?.length || 0} messages`);
@@ -76,6 +91,11 @@ async function getMessagesInDateRange(client, channelId, startDate, endDate) {
     console.error('Error in getMessagesInDateRange:', error);
     console.error('Channel ID:', channelId);
     console.error('Error details:', JSON.stringify(error.data || {}, null, 2));
+    
+    // Provide more specific error messages
+    if (error.data?.error === 'channel_not_found') {
+      throw new Error('Unable to access channel. Please make sure the bot is invited to the channel.');
+    }
     throw error;
   }
 }
