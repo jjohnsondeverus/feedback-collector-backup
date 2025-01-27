@@ -1,7 +1,9 @@
 const OpenAI = require('openai');
+const { BaseLLMService } = require('./base-llm-service');
 
-class OpenAIService {
+class OpenAIService extends BaseLLMService {
   constructor(config = {}) {
+    super();
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY
     });
@@ -38,10 +40,7 @@ class OpenAIService {
       });
 
       const result = JSON.parse(response.choices[0].message.content);
-      if (!result.feedback || !Array.isArray(result.feedback)) {
-        throw new Error('Invalid response format from OpenAI');
-      }
-      return result;
+      return this.validateResponse(result);
     } catch (error) {
       console.error('Error analyzing feedback:', error);
       if (error.message.includes('JSON')) {
