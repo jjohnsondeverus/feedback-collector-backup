@@ -205,7 +205,7 @@ function preprocessMessages(messages) {
   };
 }
 
-// Add helper to identify potential issues
+// Add helper to identify potential issues in function
 function identifyPotentialIssues(messages) {
   const issues = new Map();
   const issueIndicators = [
