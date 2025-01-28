@@ -764,9 +764,12 @@ app.command('/collect-feedback', async ({ ack, body, client }) => {
               text: 'Select Channel'
             },
             element: {
-              type: 'channels_select',
+              type: 'conversations_select',
               action_id: 'channel_selected',
-              include_private: true
+              filter: {
+                include: ["public_channel", "private_channel"],
+                exclude_bot_users: true
+              }
             }
           },
           // Start date picker
