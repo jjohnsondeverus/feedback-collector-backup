@@ -1324,30 +1324,41 @@ async function createChannelSelectorModal(client, triggerId) {
           text: 'Feedback Collection'
         },
         blocks: [
-          // Add choice buttons at the top
+          // Replace buttons with radio buttons
           {
-            type: 'actions',
+            type: 'input',
             block_id: 'process_type',
-            elements: [
-              {
-                type: 'button',
+            label: {
+              type: 'plain_text',
+              text: 'Select Process Type'
+            },
+            element: {
+              type: 'radio_buttons',
+              action_id: 'process_selected',
+              initial_option: {
                 text: {
                   type: 'plain_text',
                   text: 'Create Jira Tickets'
                 },
-                value: 'tickets',
-                action_id: 'select_tickets'
+                value: 'tickets'
               },
-              {
-                type: 'button',
-                text: {
-                  type: 'plain_text',
-                  text: 'Generate Summary'
+              options: [
+                {
+                  text: {
+                    type: 'plain_text',
+                    text: 'Create Jira Tickets'
+                  },
+                  value: 'tickets'
                 },
-                value: 'summary',
-                action_id: 'select_summary'
-              }
-            ]
+                {
+                  text: {
+                    type: 'plain_text',
+                    text: 'Generate Summary'
+                  },
+                  value: 'summary'
+                }
+              ]
+            }
           },
           {
             type: 'divider'
@@ -1398,26 +1409,13 @@ async function createChannelSelectorModal(client, triggerId) {
   }
 }
 
-// Add state tracking for selected process type
-let selectedProcessType = 'tickets'; // Default to tickets
-
-// Handle process type selection
-app.action('select_tickets', async ({ ack, body }) => {
-  await ack();
-  selectedProcessType = 'tickets';
-});
-
-app.action('select_summary', async ({ ack, body }) => {
-  await ack();
-  selectedProcessType = 'summary';
-});
-
 // Handle the modal submission
 app.view('channel_select_modal', async ({ ack, body, view, client }) => {
   try {
     // Get values from the modal
     const channelId = view.state.values.channel_select.channel_selected.selected_channel;
     const startDate = view.state.values.date_range.start_date.selected_date;
+    const processType = view.state.values.process_type.process_selected.selected_option.value;
     
     await ack();
     
@@ -1436,7 +1434,7 @@ app.view('channel_select_modal', async ({ ack, body, view, client }) => {
     const messages = await getMessagesInDateRange(client, channelId, startDate, endDate);
     
     // Process based on selected type
-    if (selectedProcessType === 'summary') {
+    if (processType === 'summary') {
       // Generate summary
       const service = new FeedbackCollectionService(null, { slackClient: client });
       const summary = await service.generateChannelSummary(messages);
