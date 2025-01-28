@@ -191,6 +191,40 @@ h2. Additional Context
 ${item.additional_context || 'N/A'}
     `.trim();
   }
+
+  async generateChannelSummary(messages) {
+    try {
+      const openaiService = new OpenAIService();
+      const response = await openaiService.chat.completions.create({
+        model: process.env.OPENAI_MODEL || "gpt-4o-2024-11-20",
+        messages: [
+          {
+            role: "system",
+            content: `Analyze these Slack conversations and create a concise summary of:
+              1. Key technical issues discussed
+              2. Important decisions or conclusions
+              3. Action items or next steps
+              4. Notable trends or patterns
+              
+              Format the summary in clear sections with bullet points.
+              Focus on technical and business-relevant information.
+              Exclude routine chatter or resolved issues.`
+          },
+          {
+            role: "user",
+            content: JSON.stringify(messages)
+          }
+        ],
+        temperature: 0.1,
+        response_format: { type: "text" }
+      });
+
+      return response.choices[0].message.content;
+    } catch (error) {
+      console.error('Error generating summary:', error);
+      throw error;
+    }
+  }
 }
 
 module.exports = { FeedbackCollectionService }; 
