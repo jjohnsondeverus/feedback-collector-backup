@@ -729,22 +729,22 @@ app.command('/collect-feedback', async ({ ack, body, client }) => {
               type: 'radio_buttons',
               action_id: 'process_selected',
               initial_option: {
-                text: {
+        text: {
                   type: 'plain_text',
                   text: 'Create Jira Tickets'
-                },
+      },
                 value: 'tickets'
               },
               options: [
-                {
-                  text: {
+      {
+            text: {
                     type: 'plain_text',
                     text: 'Create Jira Tickets'
-                  },
+            },
                   value: 'tickets'
-                },
-                {
-                  text: {
+          },
+          {
+            text: {
                     type: 'plain_text',
                     text: 'Generate Summary'
                   },
@@ -759,7 +759,7 @@ app.command('/collect-feedback', async ({ ack, body, client }) => {
           {
             type: 'input',
             block_id: 'channel_select',
-            label: {
+      label: {
               type: 'plain_text',
               text: 'Select Channel'
             },
@@ -776,10 +776,10 @@ app.command('/collect-feedback', async ({ ack, body, client }) => {
               type: 'plain_text',
               text: 'Start Date'
             },
-            element: {
+      element: {
               type: 'datepicker',
               action_id: 'datepicker',
-              placeholder: {
+        placeholder: {
                 type: 'plain_text',
                 text: 'Select start date'
               }
@@ -793,21 +793,21 @@ app.command('/collect-feedback', async ({ ack, body, client }) => {
               type: 'plain_text',
               text: 'End Date'
             },
-            element: {
+      element: {
               type: 'datepicker',
               action_id: 'datepicker',
-              placeholder: {
+        placeholder: {
                 type: 'plain_text',
                 text: 'Select end date'
               }
             }
           }
         ],
-        submit: {
+    submit: {
           type: 'plain_text',
           text: 'Process Feedback',
-          emoji: true
-        }
+      emoji: true
+    }
       }
     });
   } catch (error) {
@@ -823,7 +823,7 @@ app.command('/collect-feedback', async ({ ack, body, client }) => {
 app.action('create_tickets', async ({ ack, body, client }) => {
   try {
   await ack();
-
+  
     console.log('Creating channel selector modal...');
     
     // Show the date/channel picker modal
@@ -839,7 +839,7 @@ app.action('create_tickets', async ({ ack, body, client }) => {
         blocks: [
           {
             type: 'section',
-      text: {
+            text: {
               type: 'mrkdwn',
               text: '*Note:* For private channels, please invite the bot using `/invite @YourBotName` before collecting feedback.'
             }
@@ -968,7 +968,7 @@ async function handleFeedbackCollection(client, userId, messageTs, startDate, en
               {
                 type: "button",
                 text: {
-                  type: "plain_text",
+          type: "plain_text",
                   text: "Review Feedback Items"
                 },
                 action_id: "review_feedback",
@@ -978,9 +978,9 @@ async function handleFeedbackCollection(client, userId, messageTs, startDate, en
           }
         ],
         text: "Feedback collection complete" // Fallback text
-      });
+    });
 
-    } catch (error) {
+  } catch (error) {
       // Handle specific errors with user-friendly messages
       let errorMessage = "An error occurred during processing.\n\n";
       let suggestion = "";
@@ -1047,10 +1047,10 @@ app.view('collect_feedback_modal', async ({ ack, body, view, client }) => {
       sessionId,
       channelId  // Make sure we're passing the channel ID here
     );
-  } catch (error) {
+      } catch (error) {
     console.error('Error in collect_feedback_modal:', error);
     console.error('Error details:', JSON.stringify(error.data || {}, null, 2));
-    
+
     // Notify user of error
     const dmChannel = await client.conversations.open({
       users: body.user.id
@@ -1089,7 +1089,7 @@ function createPreviewModal(items) {
     blocks: [
       {
         type: 'section',
-                text: {
+        text: {
           type: 'mrkdwn',
           text: '*Instructions:*\n• Check the boxes for items you want to create tickets for\n• Edit fields as needed\n• Title, Type, and Priority are required'
         }
@@ -1108,8 +1108,8 @@ function createPreviewModal(items) {
             label: {
           type: 'plain_text',
           text: 'Jira Project Key',
-              emoji: true
-            }
+          emoji: true
+        }
       },
       {
         type: 'divider'
@@ -1121,7 +1121,7 @@ function createPreviewModal(items) {
         return [
           {
             type: 'section',
-      text: {
+            text: {
               type: 'mrkdwn',
               text: `*${index + 1}. ${item.title}*\n${item.summary || ''}`
             },
@@ -1225,11 +1225,11 @@ function createPreviewModal(items) {
         ];
       }).flat()
     ],
-    submit: {
+      submit: {
       type: 'plain_text',
       text: 'Create Jira Tickets'
-    },
-    close: {
+      },
+      close: {
       type: 'plain_text',
       text: 'Cancel'
     }
@@ -1397,7 +1397,7 @@ async function createChannelSelectorModal(client, triggerId) {
               type: 'radio_buttons',
               action_id: 'process_selected',
               initial_option: {
-                text: {
+      text: {
                   type: 'plain_text',
                   text: 'Create Jira Tickets'
                 },
@@ -1427,7 +1427,7 @@ async function createChannelSelectorModal(client, triggerId) {
           {
             type: 'input',
             block_id: 'channel_select',
-            label: {
+      label: {
               type: 'plain_text',
               text: 'Select Channel'
             },
@@ -1444,20 +1444,20 @@ async function createChannelSelectorModal(client, triggerId) {
               type: 'plain_text',
               text: 'Start Date'
             },
-            element: {
+      element: {
               type: 'datepicker',
               action_id: 'datepicker',
-              placeholder: {
+        placeholder: {
                 type: 'plain_text',
                 text: 'Select start date'
               }
-            }
-          },
+        }
+      },
           // End date picker
           {
             type: 'input',
             block_id: 'endDate',
-            label: {
+      label: {
               type: 'plain_text',
               text: 'End Date'
             },
@@ -1471,11 +1471,11 @@ async function createChannelSelectorModal(client, triggerId) {
             }
           }
         ],
-        submit: {
+    submit: {
           type: 'plain_text',
           text: 'Process Feedback',
-          emoji: true
-        }
+      emoji: true
+    }
       }
     });
     console.log('Modal created successfully');
@@ -1524,9 +1524,9 @@ app.view('channel_select_modal', async ({ ack, body, view, client }) => {
         text: "Channel Summary", // Fallback text
         blocks: [
           {
-            type: "header",
-            text: {
-              type: "plain_text",
+        type: "header",
+        text: {
+          type: "plain_text",
               text: `📋 Channel Summary: #${channelId}`
             }
           },
@@ -1542,14 +1542,14 @@ app.view('channel_select_modal', async ({ ack, body, view, client }) => {
           },
           {
             type: "section",
-            text: {
+                text: {
               type: "mrkdwn",
               text: `${summary}\n\n*Legend:*\n🔴 High Priority  🟡 Medium Priority  🟢 Low Priority\n⏰ Urgent  📋 Planned  ⚠️ Needs Attention  ✅ Resolved`
             }
           }
         ]
-      });
-    } else {
+        });
+      } else {
       // Create tickets (existing functionality)
       const sessionId = `SESSION#${Date.now()}`;
       await handleFeedbackCollection(
