@@ -1433,9 +1433,12 @@ async function createChannelSelectorModal(client, triggerId) {
               text: 'Select Channel'
             },
             element: {
-              type: 'channels_select',
+              type: 'conversations_select',
               action_id: 'channel_selected',
-              include_private: true
+              filter: {
+                include: ["public_channel", "private_channel"],
+                exclude_bot_users: true
+              }
             }
           },
           // Start date picker
@@ -1492,7 +1495,7 @@ async function createChannelSelectorModal(client, triggerId) {
 app.view('channel_select_modal', async ({ ack, body, view, client }) => {
   try {
     // Get values from the modal
-    const channelId = view.state.values.channel_select.channel_selected.selected_channel;
+    const channelId = view.state.values.channel_select.channel_selected.selected_conversation;
     const startDate = view.state.values.startDate.datepicker.selected_date;
     const endDate = view.state.values.endDate.datepicker.selected_date;
     const processType = view.state.values.process_type.process_selected.selected_option.value;
