@@ -1,5 +1,6 @@
 const { DynamoDBService } = require('./dynamodb-service');
 const { OpenAIService } = require('./openai-service');
+const { OpenAI } = require('openai');
 
 class FeedbackCollectionService {
   constructor(config = {}, services = {}) {
@@ -190,6 +191,65 @@ ${item.expected_behavior || 'N/A'}
 h2. Additional Context
 ${item.additional_context || 'N/A'}
     `.trim();
+  }
+
+  async generateChannelSummary(messages, startDate, endDate) {
+    try {
+      const openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY
+      });
+      
+      const response = await openai.chat.completions.create({
+        model: process.env.OPENAI_MODEL || "gpt-4o-2024-11-20",
+        messages: [
+          {
+            role: "system",
+            content: `Create a comprehensive summary of these Slack conversations:
+              
+              Format the output EXACTLY as follows:
+              
+              TECHNICAL ISSUES & DECISIONS
+              • 🔴 [High Priority] [Issue title] (First seen: [date])
+              • 🟡 [Medium Priority] [Issue title] (First seen: [date])
+              • 🟢 [Low Priority] [Issue title] (First seen: [date])
+              (continue up to 8 items)
+              
+              CRITICAL ACTION ITEMS
+              • ⏰ [Urgent] [Action item] (Due: [date])
+              • 📋 [Planned] [Action item] (Added: [date])
+              (continue up to 5 items)
+              
+              Important: 
+              - Keep each point to one line
+              - Use bullet points (•)
+              - Cover the entire time period
+              - Total summary under 2000 characters
+              
+              Priority Indicators:
+              🔴 High Priority/Blocking
+              🟡 Medium Priority/Important
+              🟢 Low Priority/Enhancement
+              
+              Status Indicators:
+              ⏰ Urgent/Time-sensitive
+              📋 Planned/Scheduled
+              ⚠️ Needs Attention
+              ✅ Resolved/Complete`
+          },
+          {
+            role: "user",
+            content: `Time period: ${startDate} to ${endDate}\n\nMessages: ${JSON.stringify(messages)}`
+          }
+        ],
+        temperature: 0.1,
+        max_tokens: 500
+      });
+
+      return response.choices[0].message.content;
+    } catch (error) {
+      console.error('Error generating summary:', error);
+      throw error;
+    }
   }
 }
 

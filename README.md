@@ -24,6 +24,39 @@ A Slack app that collects user feedback from channels, analyzes it using GPT-4, 
 - Collect feedback from specified Slack channels
 - Support for both public and private channels
 
+### 1. Jira Ticket Creation
+Automatically processes Slack conversations and creates Jira tickets based on feedback.
+
+### 2. Channel Summary Generation
+Generate concise summaries of Slack channel discussions over a specified time period. The summary includes:
+
+#### Technical Issues & Decisions
+- Prioritized list of technical issues and decisions (up to 8 items)
+- Each issue includes:
+  - Priority indicator (🔴 High, 🟡 Medium, 🟢 Low)
+  - Issue title/description
+  - First seen date
+
+#### Critical Action Items
+- List of action items and next steps (up to 5 items)
+- Each action includes:
+  - Status indicator (⏰ Urgent, 📋 Planned)
+  - Action description
+  - Due date or added date
+
+### Using the Summary Feature
+1. Type `/collect-feedback` in any channel
+2. Select "Generate Summary" from the process type options
+3. Choose the channel to analyze
+4. Select the date range
+5. Click "Process Feedback"
+
+The agent will:
+- Fetch all messages from the selected time period
+- Analyze the conversations using AI
+- Generate a structured summary
+- Post the results in a DM to the requesting user
+
 ## Setup
 
 ### Prerequisites
@@ -52,6 +85,7 @@ JIRA_USERNAME=your-email@domain.com
 JIRA_API_TOKEN=...
 OPENAI_API_KEY=...
 DUPLICATE_SIMILARITY_THRESHOLD=0.3
+OPENAI_MODEL=gpt-4-turbo-preview  # Optional, defaults to latest GPT-4
 ```
 
 3. Start the application:

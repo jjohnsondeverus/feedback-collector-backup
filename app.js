@@ -205,7 +205,7 @@ function preprocessMessages(messages) {
   };
 }
 
-// Add helper to identify potential issues
+// Add helper to identify potential issues in function
 function identifyPotentialIssues(messages) {
   const issues = new Map();
   const issueIndicators = [
@@ -708,46 +708,106 @@ app.command('/collect-feedback', async ({ ack, body, client }) => {
   try {
     await ack();
     
-    // Show the mode selection modal
     await client.views.open({
       trigger_id: body.trigger_id,
       view: {
         type: 'modal',
-        callback_id: 'feedback_mode_select',
+        callback_id: 'channel_select_modal',
         title: {
           type: 'plain_text',
           text: 'Feedback Collection'
         },
         blocks: [
           {
-            type: 'section',
+            type: 'input',
+            block_id: 'process_type',
+            label: {
+              type: 'plain_text',
+              text: 'Select Process Type'
+            },
+            element: {
+              type: 'radio_buttons',
+              action_id: 'process_selected',
+              initial_option: {
         text: {
-              type: 'mrkdwn',
-              text: 'Choose how you\'d like to process the feedback:'
-        }
-      },
-      {
-            type: 'actions',
-        elements: [
-          {
-                type: 'button',
-            text: {
                   type: 'plain_text',
                   text: 'Create Jira Tickets'
+      },
+                value: 'tickets'
+              },
+              options: [
+      {
+            text: {
+                    type: 'plain_text',
+                    text: 'Create Jira Tickets'
             },
-                action_id: 'create_tickets'
+                  value: 'tickets'
           },
           {
-                type: 'button',
             text: {
-                  type: 'plain_text',
-                  text: 'Generate Summary'
-                },
-                action_id: 'generate_summary'
+                    type: 'plain_text',
+                    text: 'Generate Summary'
+                  },
+                  value: 'summary'
+                }
+              ]
+            }
+          },
+          {
+            type: 'divider'
+          },
+          {
+            type: 'input',
+            block_id: 'channel_select',
+      label: {
+              type: 'plain_text',
+              text: 'Select Channel'
+            },
+            element: {
+              type: 'channels_select',
+              action_id: 'channel_selected'
+            }
+          },
+          // Start date picker
+          {
+            type: 'input',
+            block_id: 'startDate',
+            label: {
+              type: 'plain_text',
+              text: 'Start Date'
+            },
+      element: {
+              type: 'datepicker',
+              action_id: 'datepicker',
+        placeholder: {
+                type: 'plain_text',
+                text: 'Select start date'
               }
-            ]
+            }
+          },
+          // End date picker
+          {
+            type: 'input',
+            block_id: 'endDate',
+            label: {
+              type: 'plain_text',
+              text: 'End Date'
+            },
+      element: {
+              type: 'datepicker',
+              action_id: 'datepicker',
+        placeholder: {
+                type: 'plain_text',
+                text: 'Select end date'
+              }
+            }
           }
-        ]
+        ],
+    submit: {
+          type: 'plain_text',
+          text: 'Process Feedback',
+      emoji: true
+    }
       }
     });
   } catch (error) {
@@ -763,7 +823,7 @@ app.command('/collect-feedback', async ({ ack, body, client }) => {
 app.action('create_tickets', async ({ ack, body, client }) => {
   try {
   await ack();
-
+  
     console.log('Creating channel selector modal...');
     
     // Show the date/channel picker modal
@@ -779,7 +839,7 @@ app.action('create_tickets', async ({ ack, body, client }) => {
         blocks: [
           {
             type: 'section',
-      text: {
+            text: {
               type: 'mrkdwn',
               text: '*Note:* For private channels, please invite the bot using `/invite @YourBotName` before collecting feedback.'
             }
@@ -816,7 +876,8 @@ app.action('create_tickets', async ({ ack, body, client }) => {
             },
       element: {
               type: 'datepicker',
-              action_id: 'datepicker'
+              action_id: 'start_date',
+              placeholder: { type: 'plain_text', text: 'Select start date' }
             }
           },
           {
@@ -828,7 +889,8 @@ app.action('create_tickets', async ({ ack, body, client }) => {
             },
       element: {
               type: 'datepicker',
-              action_id: 'datepicker'
+              action_id: 'end_date',
+              placeholder: { type: 'plain_text', text: 'Select end date' }
             }
           }
         ],
@@ -906,7 +968,7 @@ async function handleFeedbackCollection(client, userId, messageTs, startDate, en
               {
                 type: "button",
                 text: {
-                  type: "plain_text",
+          type: "plain_text",
                   text: "Review Feedback Items"
                 },
                 action_id: "review_feedback",
@@ -916,9 +978,9 @@ async function handleFeedbackCollection(client, userId, messageTs, startDate, en
           }
         ],
         text: "Feedback collection complete" // Fallback text
-      });
+    });
 
-    } catch (error) {
+  } catch (error) {
       // Handle specific errors with user-friendly messages
       let errorMessage = "An error occurred during processing.\n\n";
       let suggestion = "";
@@ -953,13 +1015,13 @@ app.view('collect_feedback_modal', async ({ ack, body, view, client }) => {
   try {
     // Get values from the modal
     const channelId = view.state.values.channel_select.channel_selected.selected_conversation;
-    const start = view.state.values.startDate.datepicker.selected_date;
-    const end = view.state.values.endDate.datepicker.selected_date;
+    const startDate = view.state.values.startDate.datepicker.selected_date;
+    const endDate = view.state.values.endDate.datepicker.selected_date;
 
     await ack();
 
     console.log('Selected channel:', channelId);
-    console.log('Date range:', start, 'to', end);
+    console.log('Date range:', startDate, 'to', endDate);
 
     // Create a session ID
     const sessionId = `SESSION#${Date.now()}`;
@@ -980,15 +1042,15 @@ app.view('collect_feedback_modal', async ({ ack, body, view, client }) => {
       client,
       dmChannel.channel.id,
       message.ts,
-      start,
-      end,
+      startDate,
+      endDate,
       sessionId,
       channelId  // Make sure we're passing the channel ID here
     );
-  } catch (error) {
+      } catch (error) {
     console.error('Error in collect_feedback_modal:', error);
     console.error('Error details:', JSON.stringify(error.data || {}, null, 2));
-    
+
     // Notify user of error
     const dmChannel = await client.conversations.open({
       users: body.user.id
@@ -1027,7 +1089,7 @@ function createPreviewModal(items) {
     blocks: [
       {
         type: 'section',
-                text: {
+        text: {
           type: 'mrkdwn',
           text: '*Instructions:*\n• Check the boxes for items you want to create tickets for\n• Edit fields as needed\n• Title, Type, and Priority are required'
         }
@@ -1046,8 +1108,8 @@ function createPreviewModal(items) {
             label: {
           type: 'plain_text',
           text: 'Jira Project Key',
-              emoji: true
-            }
+          emoji: true
+        }
       },
       {
         type: 'divider'
@@ -1059,7 +1121,7 @@ function createPreviewModal(items) {
         return [
           {
             type: 'section',
-      text: {
+            text: {
               type: 'mrkdwn',
               text: `*${index + 1}. ${item.title}*\n${item.summary || ''}`
             },
@@ -1163,11 +1225,11 @@ function createPreviewModal(items) {
         ];
       }).flat()
     ],
-    submit: {
+      submit: {
       type: 'plain_text',
       text: 'Create Jira Tickets'
-    },
-    close: {
+      },
+      close: {
       type: 'plain_text',
       text: 'Cancel'
     }
@@ -1306,6 +1368,209 @@ app.view('preview_feedback_modal', async ({ ack, body, view, client }) => {
     await client.chat.postMessage({
       channel: dmChannel.channel.id,
       text: `❌ Error creating tickets: ${error.message}`
+    });
+  }
+});
+
+// Create the channel selector modal
+async function createChannelSelectorModal(client, triggerId) {
+  try {
+    console.log('Creating channel selector modal...');
+    const result = await client.views.open({
+      trigger_id: triggerId,
+      view: {
+        type: 'modal',
+        callback_id: 'channel_select_modal',
+        title: {
+          type: 'plain_text',
+          text: 'Feedback Collection'
+        },
+        blocks: [
+          {
+            type: 'input',
+            block_id: 'process_type',
+            label: {
+              type: 'plain_text',
+              text: 'Select Process Type'
+            },
+            element: {
+              type: 'radio_buttons',
+              action_id: 'process_selected',
+              initial_option: {
+      text: {
+                  type: 'plain_text',
+                  text: 'Create Jira Tickets'
+                },
+                value: 'tickets'
+              },
+              options: [
+                {
+                  text: {
+                    type: 'plain_text',
+                    text: 'Create Jira Tickets'
+                  },
+                  value: 'tickets'
+                },
+                {
+                  text: {
+                    type: 'plain_text',
+                    text: 'Generate Summary'
+                  },
+                  value: 'summary'
+                }
+              ]
+            }
+          },
+          {
+            type: 'divider'
+          },
+          {
+            type: 'input',
+            block_id: 'channel_select',
+      label: {
+              type: 'plain_text',
+              text: 'Select Channel'
+            },
+            element: {
+              type: 'channels_select',
+              action_id: 'channel_selected'
+            }
+          },
+          // Start date picker
+          {
+            type: 'input',
+            block_id: 'startDate',
+            label: {
+              type: 'plain_text',
+              text: 'Start Date'
+            },
+      element: {
+              type: 'datepicker',
+              action_id: 'datepicker',
+        placeholder: {
+                type: 'plain_text',
+                text: 'Select start date'
+              }
+        }
+      },
+          // End date picker
+          {
+            type: 'input',
+            block_id: 'endDate',
+      label: {
+              type: 'plain_text',
+              text: 'End Date'
+            },
+            element: {
+              type: 'datepicker',
+              action_id: 'datepicker',
+              placeholder: {
+                type: 'plain_text',
+                text: 'Select end date'
+              }
+            }
+          }
+        ],
+    submit: {
+          type: 'plain_text',
+          text: 'Process Feedback',
+      emoji: true
+    }
+      }
+    });
+    console.log('Modal created successfully');
+    return result;
+  } catch (error) {
+    console.error('Error creating modal:', error);
+    throw error;
+  }
+}
+
+// Handle the modal submission
+app.view('channel_select_modal', async ({ ack, body, view, client }) => {
+  try {
+    // Get values from the modal
+    const channelId = view.state.values.channel_select.channel_selected.selected_channel;
+    const startDate = view.state.values.startDate.datepicker.selected_date;
+    const endDate = view.state.values.endDate.datepicker.selected_date;
+    const processType = view.state.values.process_type.process_selected.selected_option.value;
+    
+    await ack();
+    
+    // Open DM channel for status updates
+    const dmChannel = await client.conversations.open({
+      users: body.user.id
+    });
+    
+    // Send initial progress message
+    const message = await client.chat.postMessage({
+      channel: dmChannel.channel.id,
+      text: "🔄 Starting feedback collection..."
+    });
+    
+    // Get messages from the channel
+    const messages = await getMessagesInDateRange(client, channelId, startDate, endDate);
+    
+    // Process based on selected type
+    if (processType === 'summary') {
+      // Generate summary
+      const service = new FeedbackCollectionService(null, { slackClient: client });
+      const summary = await service.generateChannelSummary(messages, startDate, endDate);
+      
+      // Format and send summary
+      await client.chat.update({
+        channel: dmChannel.channel.id,
+        ts: message.ts,
+        text: "Channel Summary", // Fallback text
+        blocks: [
+          {
+        type: "header",
+        text: {
+          type: "plain_text",
+              text: `📋 Channel Summary: #${channelId}`
+            }
+          },
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `*Date Range:* ${startDate} to ${endDate}`
+            }
+          },
+          {
+            type: "divider"
+          },
+          {
+            type: "section",
+                text: {
+              type: "mrkdwn",
+              text: `${summary}\n\n*Legend:*\n🔴 High Priority  🟡 Medium Priority  🟢 Low Priority\n⏰ Urgent  📋 Planned  ⚠️ Needs Attention  ✅ Resolved`
+            }
+          }
+        ]
+        });
+      } else {
+      // Create tickets (existing functionality)
+      const sessionId = `SESSION#${Date.now()}`;
+      await handleFeedbackCollection(
+        client,
+        dmChannel.channel.id,
+        message.ts,
+        startDate,
+        endDate,
+        sessionId,
+        channelId
+      );
+    }
+  } catch (error) {
+    console.error('Error processing feedback:', error);
+    // Send error message to user
+    const dmChannel = await client.conversations.open({
+      users: body.user.id
+    });
+    await client.chat.postMessage({
+      channel: dmChannel.channel.id,
+      text: `❌ Error: ${error.message}`
     });
   }
 });
