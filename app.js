@@ -764,8 +764,12 @@ app.command('/collect-feedback', async ({ ack, body, client }) => {
               text: 'Select Channel'
             },
             element: {
-              type: 'channels_select',
-              action_id: 'channel_selected'
+              type: 'conversations_select',
+              action_id: 'channel_selected',
+              filter: {
+                include: ["private", "public"],
+                exclude_bot_users: true
+              }
             }
           },
           // Start date picker
@@ -861,7 +865,7 @@ app.action('create_tickets', async ({ ack, body, client }) => {
                 text: 'Select a channel'
               },
               filter: {
-                include: ['public', 'private'],
+                include: ['private', 'public'],
                 exclude_bot_users: true
               },
               action_id: 'channel_selected'
@@ -1432,8 +1436,12 @@ async function createChannelSelectorModal(client, triggerId) {
               text: 'Select Channel'
             },
             element: {
-              type: 'channels_select',
-              action_id: 'channel_selected'
+              type: 'conversations_select',
+              action_id: 'channel_selected',
+              filter: {
+                include: ["private", "public"],
+                exclude_bot_users: true
+              }
             }
           },
           // Start date picker
@@ -1490,7 +1498,7 @@ async function createChannelSelectorModal(client, triggerId) {
 app.view('channel_select_modal', async ({ ack, body, view, client }) => {
   try {
     // Get values from the modal
-    const channelId = view.state.values.channel_select.channel_selected.selected_channel;
+    const channelId = view.state.values.channel_select.channel_selected.selected_conversation;
     const startDate = view.state.values.startDate.datepicker.selected_date;
     const endDate = view.state.values.endDate.datepicker.selected_date;
     const processType = view.state.values.process_type.process_selected.selected_option.value;
