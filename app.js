@@ -767,7 +767,7 @@ app.command('/collect-feedback', async ({ ack, body, client }) => {
               type: 'conversations_select',
               action_id: 'channel_selected',
               filter: {
-                include: ["im", "mpim", "private", "public"],
+                include: ["private", "public"],
                 exclude_bot_users: true
               }
             }
@@ -865,7 +865,7 @@ app.action('create_tickets', async ({ ack, body, client }) => {
                 text: 'Select a channel'
               },
               filter: {
-                include: ['im', 'mpim', 'private', 'public'],
+                include: ['private', 'public'],
                 exclude_bot_users: true
               },
               action_id: 'channel_selected'
@@ -1439,7 +1439,7 @@ async function createChannelSelectorModal(client, triggerId) {
               type: 'conversations_select',
               action_id: 'channel_selected',
               filter: {
-                include: ["im", "mpim", "private", "public"],
+                include: ["private", "public"],
                 exclude_bot_users: true
               }
             }
