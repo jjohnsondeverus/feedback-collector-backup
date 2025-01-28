@@ -51,7 +51,7 @@ Generate concise summaries of Slack channel discussions over a specified time pe
 4. Select the date range
 5. Click "Process Feedback"
 
-The bot will:
+The agent will:
 - Fetch all messages from the selected time period
 - Analyze the conversations using AI
 - Generate a structured summary
