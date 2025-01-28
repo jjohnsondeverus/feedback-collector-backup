@@ -1515,7 +1515,7 @@ app.view('channel_select_modal', async ({ ack, body, view, client }) => {
     if (processType === 'summary') {
       // Generate summary
       const service = new FeedbackCollectionService(null, { slackClient: client });
-      const summary = await service.generateChannelSummary(messages);
+      const summary = await service.generateChannelSummary(messages, startDate, endDate);
       
       // Format and send summary
       await client.chat.update({

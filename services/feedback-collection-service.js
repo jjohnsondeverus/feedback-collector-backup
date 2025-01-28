@@ -193,7 +193,7 @@ ${item.additional_context || 'N/A'}
     `.trim();
   }
 
-  async generateChannelSummary(messages) {
+  async generateChannelSummary(messages, startDate, endDate) {
     try {
       const openai = new OpenAI({
         apiKey: process.env.OPENAI_API_KEY
