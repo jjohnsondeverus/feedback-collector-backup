@@ -1521,6 +1521,7 @@ app.view('channel_select_modal', async ({ ack, body, view, client }) => {
       await client.chat.update({
         channel: dmChannel.channel.id,
         ts: message.ts,
+        text: "Channel Summary", // Add fallback text
         blocks: [
           {
             type: "header",
@@ -1543,7 +1544,7 @@ app.view('channel_select_modal', async ({ ack, body, view, client }) => {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: summary
+              text: summary || "No summary available" // Ensure we have text content
             }
           }
         ]

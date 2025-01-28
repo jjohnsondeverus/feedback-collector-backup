@@ -220,11 +220,10 @@ ${item.additional_context || 'N/A'}
           }
         ],
         temperature: 0.1,
-        response_format: { type: "text" },
         max_tokens: 2000
       });
 
-      return response.choices[0].content;
+      return response.choices[0].message.content;
     } catch (error) {
       console.error('Error generating summary:', error);
       throw error;
