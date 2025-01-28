@@ -1369,7 +1369,6 @@ async function createChannelSelectorModal(client, triggerId) {
           text: 'Feedback Collection'
         },
         blocks: [
-          // Replace buttons with radio buttons
           {
             type: 'input',
             block_id: 'process_type',
@@ -1408,38 +1407,50 @@ async function createChannelSelectorModal(client, triggerId) {
           {
             type: 'divider'
           },
-          // Existing channel selector
           {
             type: 'input',
             block_id: 'channel_select',
             label: {
               type: 'plain_text',
-              text: 'Select a channel'
+              text: 'Select Channel'
             },
             element: {
               type: 'channels_select',
               action_id: 'channel_selected'
             }
           },
-          // Existing date range selector
+          // Start date picker
           {
             type: 'input',
-            block_id: 'date_range',
-            label: { type: 'plain_text', text: 'Start Date' },
+            block_id: 'startDate',
+            label: {
+              type: 'plain_text',
+              text: 'Start Date'
+            },
             element: {
               type: 'datepicker',
-              action_id: 'start_date',
-              placeholder: { type: 'plain_text', text: 'Select start date' }
+              action_id: 'datepicker',
+              placeholder: {
+                type: 'plain_text',
+                text: 'Select start date'
+              }
             }
           },
+          // End date picker
           {
             type: 'input',
-            block_id: 'date_range_end',
-            label: { type: 'plain_text', text: 'End Date' },
+            block_id: 'endDate',
+            label: {
+              type: 'plain_text',
+              text: 'End Date'
+            },
             element: {
               type: 'datepicker',
-              action_id: 'end_date',
-              placeholder: { type: 'plain_text', text: 'Select end date' }
+              action_id: 'datepicker',
+              placeholder: {
+                type: 'plain_text',
+                text: 'Select end date'
+              }
             }
           }
         ],
