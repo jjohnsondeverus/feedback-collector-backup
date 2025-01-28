@@ -204,16 +204,13 @@ ${item.additional_context || 'N/A'}
         messages: [
           {
             role: "system",
-            content: `Analyze these Slack conversations and create a concise summary of:
-              1. Key technical issues discussed
-              2. Important decisions or conclusions
-              3. Action items or next steps
-              4. Notable trends or patterns
-              
-              Format the summary in clear sections with bullet points.
-              Focus on technical and business-relevant information.
-              Exclude routine chatter or resolved issues.
-              Keep the summary concise and under 8000 characters.`
+            content: `Create a brief summary of the key points from these Slack conversations:
+              • List the main technical issues and decisions (max 5)
+              • List critical action items (max 3)
+              • Keep each point to one line
+              • Total summary should be under 2000 characters
+              • Use bullet points (•) for each item
+              • Focus only on the most important items`
           },
           {
             role: "user",
@@ -221,7 +218,7 @@ ${item.additional_context || 'N/A'}
           }
         ],
         temperature: 0.1,
-        max_tokens: 1000
+        max_tokens: 500
       });
 
       return response.choices[0].message.content;

@@ -1540,16 +1540,13 @@ app.view('channel_select_modal', async ({ ack, body, view, client }) => {
           {
             type: "divider"
           },
-          // Split summary into chunks of 2900 characters (leaving room for formatting)
-          ...(summary || "No summary available")
-            .match(/.{1,2900}/g)
-            .map(chunk => ({
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: chunk
-              }
-            }))
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: summary || "No summary available"
+            }
+          }
         ]
       });
     } else {
