@@ -713,41 +713,84 @@ app.command('/collect-feedback', async ({ ack, body, client }) => {
       trigger_id: body.trigger_id,
       view: {
         type: 'modal',
-        callback_id: 'feedback_mode_select',
+        callback_id: 'channel_select_modal',  // Changed to go directly to channel select
         title: {
           type: 'plain_text',
           text: 'Feedback Collection'
         },
         blocks: [
           {
-            type: 'section',
-        text: {
-              type: 'mrkdwn',
-              text: 'Choose how you\'d like to process the feedback:'
-        }
-      },
-      {
-            type: 'actions',
-        elements: [
-          {
-                type: 'button',
-            text: {
+            type: 'input',
+            block_id: 'process_type',
+            label: {
+              type: 'plain_text',
+              text: 'Select Process Type'
+            },
+            element: {
+              type: 'radio_buttons',
+              action_id: 'process_selected',
+              initial_option: {
+                text: {
                   type: 'plain_text',
                   text: 'Create Jira Tickets'
-            },
-                action_id: 'create_tickets'
+                },
+                value: 'tickets'
+              },
+              options: [
+                {
+                  text: {
+                    type: 'plain_text',
+                    text: 'Create Jira Tickets'
+                  },
+                  value: 'tickets'
+                },
+                {
+                  text: {
+                    type: 'plain_text',
+                    text: 'Generate Summary'
+                  },
+                  value: 'summary'
+                }
+              ]
+            }
           },
           {
-                type: 'button',
-            text: {
-                  type: 'plain_text',
-                  text: 'Generate Summary'
-                },
-                action_id: 'generate_summary'
+            type: 'divider'
+          },
+          {
+            type: 'input',
+            block_id: 'channel_select',
+            label: {
+              type: 'plain_text',
+              text: 'Select Channel'
+            },
+            element: {
+              type: 'channels_select',
+              action_id: 'channel_selected'
+            }
+          },
+          {
+            type: 'input',
+            block_id: 'date_range',
+            label: {
+              type: 'plain_text',
+              text: 'Select date range'
+            },
+            element: {
+              type: 'datepicker',
+              action_id: 'start_date',
+              placeholder: {
+                type: 'plain_text',
+                text: 'Select start date'
               }
-            ]
+            }
           }
-        ]
+        ],
+        submit: {
+          type: 'plain_text',
+          text: 'Process Feedback',
+          emoji: true
+        }
       }
     });
   } catch (error) {
