@@ -765,7 +765,12 @@ app.command('/collect-feedback', async ({ ack, body, client }) => {
             },
             element: {
               type: 'channels_select',
-              action_id: 'channel_selected'
+              action_id: 'channel_selected',
+              response_url_enabled: true,
+              filter: {
+                include: ["private", "public"],
+                exclude_bot_users: true
+              }
             }
           },
           // Start date picker
@@ -1433,7 +1438,12 @@ async function createChannelSelectorModal(client, triggerId) {
             },
             element: {
               type: 'channels_select',
-              action_id: 'channel_selected'
+              action_id: 'channel_selected',
+              response_url_enabled: true,
+              filter: {
+                include: ["private", "public"],
+                exclude_bot_users: true
+              }
             }
           },
           // Start date picker
