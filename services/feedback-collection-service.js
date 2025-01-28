@@ -204,17 +204,30 @@ ${item.additional_context || 'N/A'}
         messages: [
           {
             role: "system",
-            content: `Create a brief summary of the key points from these Slack conversations:
-              • List the main technical issues and decisions (max 5)
-              • List critical action items (max 3)
-              • Keep each point to one line
-              • Total summary should be under 2000 characters
-              • Use bullet points (•) for each item
-              • Focus only on the most important items`
+            content: `Create a comprehensive summary of these Slack conversations:
+              
+              Technical Issues & Decisions:
+              • List ALL significant technical issues and decisions (not just the most recent)
+              • Prioritize by impact and urgency
+              • Include both ongoing and new issues
+              • Group related issues together
+              • Maximum 8 bullet points
+              
+              Critical Action Items:
+              • List concrete next steps and required actions
+              • Include both immediate and pending items
+              • Maximum 5 bullet points
+              
+              Format:
+              • Keep each point clear and concise
+              • Use bullet points (•)
+              • Total summary under 2000 characters
+              
+              Important: Ensure consistent coverage across the entire time period, not just the most recent discussions.`
           },
           {
             role: "user",
-            content: JSON.stringify(messages)
+            content: `Time period: ${startDate} to ${endDate}\n\nMessages: ${JSON.stringify(messages)}`
           }
         ],
         temperature: 0.1,
