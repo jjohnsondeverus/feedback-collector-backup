@@ -1521,7 +1521,7 @@ app.view('channel_select_modal', async ({ ack, body, view, client }) => {
       await client.chat.update({
         channel: dmChannel.channel.id,
         ts: message.ts,
-        text: "Channel Summary", // Add fallback text
+        text: "Channel Summary", // Fallback text
         blocks: [
           {
             type: "header",
@@ -1540,13 +1540,16 @@ app.view('channel_select_modal', async ({ ack, body, view, client }) => {
           {
             type: "divider"
           },
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: summary || "No summary available" // Ensure we have text content
-            }
-          }
+          // Split summary into chunks of 2900 characters (leaving room for formatting)
+          ...(summary || "No summary available")
+            .match(/.{1,2900}/g)
+            .map(chunk => ({
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: chunk
+              }
+            }))
         ]
       });
     } else {

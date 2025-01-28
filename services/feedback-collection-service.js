@@ -212,7 +212,8 @@ ${item.additional_context || 'N/A'}
               
               Format the summary in clear sections with bullet points.
               Focus on technical and business-relevant information.
-              Exclude routine chatter or resolved issues.`
+              Exclude routine chatter or resolved issues.
+              Keep the summary concise and under 8000 characters.`
           },
           {
             role: "user",
@@ -220,7 +221,7 @@ ${item.additional_context || 'N/A'}
           }
         ],
         temperature: 0.1,
-        max_tokens: 2000
+        max_tokens: 1000
       });
 
       return response.choices[0].message.content;
