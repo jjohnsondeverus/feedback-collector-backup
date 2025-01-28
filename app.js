@@ -708,12 +708,11 @@ app.command('/collect-feedback', async ({ ack, body, client }) => {
   try {
     await ack();
     
-    // Show the mode selection modal
     await client.views.open({
       trigger_id: body.trigger_id,
       view: {
         type: 'modal',
-        callback_id: 'channel_select_modal',  // Changed to go directly to channel select
+        callback_id: 'channel_select_modal',
         title: {
           type: 'plain_text',
           text: 'Feedback Collection'
@@ -769,19 +768,37 @@ app.command('/collect-feedback', async ({ ack, body, client }) => {
               action_id: 'channel_selected'
             }
           },
+          // Start date picker
           {
             type: 'input',
-            block_id: 'date_range',
+            block_id: 'startDate',
             label: {
               type: 'plain_text',
-              text: 'Select date range'
+              text: 'Start Date'
             },
             element: {
               type: 'datepicker',
-              action_id: 'start_date',
+              action_id: 'datepicker',
               placeholder: {
                 type: 'plain_text',
                 text: 'Select start date'
+              }
+            }
+          },
+          // End date picker
+          {
+            type: 'input',
+            block_id: 'endDate',
+            label: {
+              type: 'plain_text',
+              text: 'End Date'
+            },
+            element: {
+              type: 'datepicker',
+              action_id: 'datepicker',
+              placeholder: {
+                type: 'plain_text',
+                text: 'Select end date'
               }
             }
           }
@@ -1474,8 +1491,8 @@ app.view('channel_select_modal', async ({ ack, body, view, client }) => {
   try {
     // Get values from the modal
     const channelId = view.state.values.channel_select.channel_selected.selected_channel;
-    const startDate = view.state.values.date_range.start_date.selected_date;
-    const endDate = view.state.values.date_range_end.end_date.selected_date;
+    const startDate = view.state.values.startDate.datepicker.selected_date;
+    const endDate = view.state.values.endDate.datepicker.selected_date;
     const processType = view.state.values.process_type.process_selected.selected_option.value;
     
     await ack();
