@@ -1544,7 +1544,7 @@ app.view('channel_select_modal', async ({ ack, body, view, client }) => {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: summary
+              text: `${summary}\n\n*Legend:*\n🔴 High Priority  🟡 Medium Priority  🟢 Low Priority\n⏰ Urgent  📋 Planned  ⚠️ Needs Attention  ✅ Resolved`
             }
           }
         ]

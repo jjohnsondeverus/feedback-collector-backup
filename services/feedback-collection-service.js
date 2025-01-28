@@ -209,20 +209,32 @@ ${item.additional_context || 'N/A'}
               Format the output EXACTLY as follows:
               
               TECHNICAL ISSUES & DECISIONS
-              • [First issue/decision]
-              • [Second issue/decision]
+              • 🔴 [High Priority] [Issue title] (First seen: [date])
+              • 🟡 [Medium Priority] [Issue title] (First seen: [date])
+              • 🟢 [Low Priority] [Issue title] (First seen: [date])
               (continue up to 8 items)
               
               CRITICAL ACTION ITEMS
-              • [First action item]
-              • [Second action item]
+              • ⏰ [Urgent] [Action item] (Due: [date])
+              • 📋 [Planned] [Action item] (Added: [date])
               (continue up to 5 items)
               
               Important: 
               - Keep each point to one line
               - Use bullet points (•)
               - Cover the entire time period
-              - Total summary under 2000 characters`
+              - Total summary under 2000 characters
+              
+              Priority Indicators:
+              🔴 High Priority/Blocking
+              🟡 Medium Priority/Important
+              🟢 Low Priority/Enhancement
+              
+              Status Indicators:
+              ⏰ Urgent/Time-sensitive
+              📋 Planned/Scheduled
+              ⚠️ Needs Attention
+              ✅ Resolved/Complete`
           },
           {
             role: "user",
