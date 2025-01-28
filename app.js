@@ -859,7 +859,8 @@ app.action('create_tickets', async ({ ack, body, client }) => {
             },
       element: {
               type: 'datepicker',
-              action_id: 'datepicker'
+              action_id: 'start_date',
+              placeholder: { type: 'plain_text', text: 'Select start date' }
             }
           },
           {
@@ -871,7 +872,8 @@ app.action('create_tickets', async ({ ack, body, client }) => {
             },
       element: {
               type: 'datepicker',
-              action_id: 'datepicker'
+              action_id: 'end_date',
+              placeholder: { type: 'plain_text', text: 'Select end date' }
             }
           }
         ],
@@ -996,13 +998,13 @@ app.view('collect_feedback_modal', async ({ ack, body, view, client }) => {
   try {
     // Get values from the modal
     const channelId = view.state.values.channel_select.channel_selected.selected_conversation;
-    const start = view.state.values.startDate.datepicker.selected_date;
-    const end = view.state.values.endDate.datepicker.selected_date;
+    const startDate = view.state.values.startDate.datepicker.selected_date;
+    const endDate = view.state.values.endDate.datepicker.selected_date;
 
     await ack();
 
     console.log('Selected channel:', channelId);
-    console.log('Date range:', start, 'to', end);
+    console.log('Date range:', startDate, 'to', endDate);
 
     // Create a session ID
     const sessionId = `SESSION#${Date.now()}`;
@@ -1023,8 +1025,8 @@ app.view('collect_feedback_modal', async ({ ack, body, view, client }) => {
       client,
       dmChannel.channel.id,
       message.ts,
-      start,
-      end,
+      startDate,
+      endDate,
       sessionId,
       channelId  // Make sure we're passing the channel ID here
     );
@@ -1423,17 +1425,21 @@ async function createChannelSelectorModal(client, triggerId) {
           {
             type: 'input',
             block_id: 'date_range',
-            label: {
-              type: 'plain_text',
-              text: 'Select date range'
-            },
+            label: { type: 'plain_text', text: 'Start Date' },
             element: {
               type: 'datepicker',
               action_id: 'start_date',
-              placeholder: {
-                type: 'plain_text',
-                text: 'Select start date'
-              }
+              placeholder: { type: 'plain_text', text: 'Select start date' }
+            }
+          },
+          {
+            type: 'input',
+            block_id: 'date_range_end',
+            label: { type: 'plain_text', text: 'End Date' },
+            element: {
+              type: 'datepicker',
+              action_id: 'end_date',
+              placeholder: { type: 'plain_text', text: 'Select end date' }
             }
           }
         ],
@@ -1458,6 +1464,7 @@ app.view('channel_select_modal', async ({ ack, body, view, client }) => {
     // Get values from the modal
     const channelId = view.state.values.channel_select.channel_selected.selected_channel;
     const startDate = view.state.values.date_range.start_date.selected_date;
+    const endDate = view.state.values.date_range_end.end_date.selected_date;
     const processType = view.state.values.process_type.process_selected.selected_option.value;
     
     await ack();
