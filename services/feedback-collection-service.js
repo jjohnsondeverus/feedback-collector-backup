@@ -1,5 +1,6 @@
 const { DynamoDBService } = require('./dynamodb-service');
 const { OpenAIService } = require('./openai-service');
+const { OpenAI } = require('openai');
 
 class FeedbackCollectionService {
   constructor(config = {}, services = {}) {
@@ -194,8 +195,11 @@ ${item.additional_context || 'N/A'}
 
   async generateChannelSummary(messages) {
     try {
-      const openaiService = new OpenAIService();
-      const response = await openaiService.chat.completions.create({
+      const openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY
+      });
+      
+      const response = await openai.chat.completions.create({
         model: process.env.OPENAI_MODEL || "gpt-4o-2024-11-20",
         messages: [
           {
@@ -216,10 +220,11 @@ ${item.additional_context || 'N/A'}
           }
         ],
         temperature: 0.1,
-        response_format: { type: "text" }
+        response_format: { type: "text" },
+        max_tokens: 2000
       });
 
-      return response.choices[0].message.content;
+      return response.choices[0].content;
     } catch (error) {
       console.error('Error generating summary:', error);
       throw error;
