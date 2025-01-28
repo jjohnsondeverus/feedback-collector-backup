@@ -1544,7 +1544,7 @@ app.view('channel_select_modal', async ({ ack, body, view, client }) => {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: `*Technical Issues & Decisions*\n${summary.split('**Critical Action Items:**')[0].replace('**Main Technical Issues and Decisions:**', '')}\n*Critical Action Items*\n${summary.split('**Critical Action Items:**')[1]}`
+              text: summary
             }
           }
         ]

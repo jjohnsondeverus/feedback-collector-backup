@@ -206,24 +206,23 @@ ${item.additional_context || 'N/A'}
             role: "system",
             content: `Create a comprehensive summary of these Slack conversations:
               
-              Technical Issues & Decisions:
-              • List ALL significant technical issues and decisions (not just the most recent)
-              • Prioritize by impact and urgency
-              • Include both ongoing and new issues
-              • Group related issues together
-              • Maximum 8 bullet points
+              Format the output EXACTLY as follows:
               
-              Critical Action Items:
-              • List concrete next steps and required actions
-              • Include both immediate and pending items
-              • Maximum 5 bullet points
+              TECHNICAL ISSUES & DECISIONS
+              • [First issue/decision]
+              • [Second issue/decision]
+              (continue up to 8 items)
               
-              Format:
-              • Keep each point clear and concise
-              • Use bullet points (•)
-              • Total summary under 2000 characters
+              CRITICAL ACTION ITEMS
+              • [First action item]
+              • [Second action item]
+              (continue up to 5 items)
               
-              Important: Ensure consistent coverage across the entire time period, not just the most recent discussions.`
+              Important: 
+              - Keep each point to one line
+              - Use bullet points (•)
+              - Cover the entire time period
+              - Total summary under 2000 characters`
           },
           {
             role: "user",
