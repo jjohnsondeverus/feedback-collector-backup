@@ -1,6 +1,6 @@
 # Feedback Collector
 
-A Slack app that analyzes channel discussions using GPT-4 to either create Jira tickets or generate comprehensive summaries.
+A Slack app that analyzes channel discussions using GPT-4o to either create Jira tickets or generate comprehensive summaries.
 
 ## Features
 
@@ -17,44 +17,39 @@ A Slack app that analyzes channel discussions using GPT-4 to either create Jira 
 3. Select target channel and date range
 4. Click "Process Feedback"
 
-The bot will:
-- Fetch messages from the selected time period
-- Analyze the conversations using AI
-- Either create Jira tickets or generate a summary
-- Send results via DM to the requesting user
-
 ### 1. Jira Ticket Creation
-Automatically processes Slack conversations and creates Jira tickets based on feedback.
+Before creating tickets:
+1. Set the Jira project key when prompted
+2. Review generated feedback items
+3. Include/exclude specific items using checkboxes
+4. Click "Create Selected Tickets"
+
+Features:
+- Automatic duplicate detection
+- Priority assignment (High/Medium/Low)
+- Structured ticket format with:
+  - User impact
+  - Current behavior
+  - Expected behavior
+  - Additional context
 
 ### 2. Channel Summary Generation
-Generate concise summaries of Slack channel discussions over a specified time period. The summary includes:
+Generate concise summaries with:
+- Technical Issues & Decisions (prioritized)
+- Critical Action Items
+- Status indicators
 
-#### Technical Issues & Decisions
-- Prioritized list of technical issues and decisions (up to 8 items)
-- Each issue includes:
-  - Priority indicator (🔴 High, 🟡 Medium, 🟢 Low)
-  - Issue title/description
-  - First seen date
+## Status Indicators
+### Priority
+🔴 High Priority/Blocking
+🟡 Medium Priority/Important
+🟢 Low Priority/Enhancement
 
-#### Critical Action Items
-- List of action items and next steps (up to 5 items)
-- Each action includes:
-  - Status indicator (⏰ Urgent, 📋 Planned)
-  - Action description
-  - Due date or added date
-
-### Using the Summary Feature
-1. Type `/collect-feedback` in any channel
-2. Select "Generate Summary" from the process type options
-3. Choose the channel to analyze
-4. Select the date range
-5. Click "Process Feedback"
-
-The agent will:
-- Fetch all messages from the selected time period
-- Analyze the conversations using AI
-- Generate a structured summary
-- Post the results in a DM to the requesting user
+### Status
+⏰ Urgent/Time-sensitive
+�� Planned/Scheduled
+⚠️ Needs Attention
+✅ Resolved/Complete
 
 ## Setup
 
